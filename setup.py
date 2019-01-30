@@ -4,6 +4,8 @@
 """The setup script."""
 
 from setuptools import setup, find_packages
+from torch.utils.cpp_extension import CppExtension, BuildExtension
+from os.path import abspath, dirname
 
 
 def load_requirements(path):
@@ -46,7 +48,20 @@ setup(
     packages=find_packages(include=['pytorch_fast_elmo']),
     test_suite='tests',
     tests_require=test_requirements,
-    url='https://github.com/huntzhan/pytorch_fast_elmo',
-    version='0.1.0',
+    url='https://github.com/cnt-dev/pytorch_fast_elmo',
+    version='0.2.1',
     zip_safe=False,
+    # Pytorch Cpp Extension.
+    ext_modules=[
+        CppExtension(
+            '_pytorch_fast_elmo',
+            [
+                'extension/elmo_character_encoder.cc',
+                'extension/scalar_mix.cc',
+                'extension/bind.cc',
+            ],
+            include_dirs=[dirname(abspath(__file__))],
+        ),
+    ],
+    cmdclass={'build_ext': BuildExtension},
 )

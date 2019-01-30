@@ -1,2 +1,3 @@
-torch==1.0.0
-allennlp==0.8.0
+torch>=1.0.0
+pytorch-stateful-lstm==1.3.0
+h5py==2.9.0

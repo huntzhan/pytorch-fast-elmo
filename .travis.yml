@@ -1,13 +1,32 @@
-# Config file for automatic testing at travis-ci.org
-
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+    - gcc-4.9
+    - g++-4.9
 language: python
 python:
-  - 3.6
-
-# Command to install dependencies, e.g. pip install -r requirements.txt --use-mirrors
-install: pip install -U tox-travis
-
-# Command to run tests, e.g. python setup.py test
-script: tox
-
-
+- 3.6
+install:
+- pip install -U pip
+- sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 60 --slave
+  /usr/bin/g++ g++ /usr/bin/g++-4.9
+- pip install -U torch thinc spacy pluggy
+- pip install -U -r requirements_dev.txt --progress-bar off
+- python setup.py develop
+script:
+- py.test
+- pylint pytorch_fast_elmo
+- yapf -d -r pytorch_fast_elmo
+- mypy pytorch_fast_elmo --strict --ignore-missing-imports
+deploy:
+  provider: pypi
+  distributions: sdist
+  user: huntzhan
+  password:
+    secure: fifYVP1JpGUQTsToNDvReKBbS1o/54GHdi13I/bgU+l3AQq5yulChvukGlwJNsGTYL4DT6exWdIGv6o6gZbZgecAdDikVJnih8oxYFLqJyLEWWZ7nrJEO6OvXfTflNaRSabIduGNRxgknt66FCKLmolcSEpMht6+FSnBy/Ig3VP8R581CHKqUusMCDd3eBNA2Ag86GdLrVEMDh7t3xWzXXjRNnA+MHrG1SUROIR0qEOBz+vtd7elgoZ7ciV7G4FgAlAzSzFsicfDCaAmpu6yCcA1gqS2zf+8x8hIWAFjA0glvkB7243WMVPM6GxN+SPpD2zhgtQRvT5+PNZzvFTE9Gtw76Jvs+5IDpqaPQ7ugeKktIwu3XPgo+dRblx75AINLvQLi+dekU92sh4u/ilLEMaKmEF5WNmgSTMrFbX+mbVF4d5d2tig6Ni3/QA5MNM73p6e5YmAoRGYEB15rdBQTDGrtCOW21LVOFS3BfuQ4Hg5W3izNi2Vm9Kw5qutYfTa5t1SVXdJPRnOx/pT5ipf60UOuz6AUcYNbS348Yd7vjX12/LjsH52pPWn9m7z5xN6G+YKVFy9sfA2sBhehkiQYj5DGp3Hzmeg4p7ufmA4+lrm3Dkb9dHQ48oT/S0hCdb9iKHK06rwH7xzVRXb2GDcn7B79yqsDgG63W4Vb8cNoRM=
+  on:
+    tags: true
+    repo: cnt-dev/pytorch-fast-elmo
+    python: 3.6
