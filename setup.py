@@ -49,7 +49,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/cnt-dev/pytorch_fast_elmo',
-    version='0.2.1',
+    version='0.2.2',
     zip_safe=False,
     # Pytorch Cpp Extension.
     ext_modules=[
