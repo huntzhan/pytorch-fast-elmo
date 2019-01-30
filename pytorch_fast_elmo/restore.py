@@ -1,3 +1,8 @@
+"""
+Follows AllenNLP.
+"""
+# pylint: disable=attribute-defined-outside-init
+
 from typing import Dict, Tuple, Any
 import json
 
@@ -29,6 +34,7 @@ class ElmoCharacterEncoderRestorer:
         self.options = load_options(options_file)
         self.weight_file = weight_file
 
+    def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
         self.char_embedding_cnt = self.options.get('n_characters', 261)
         self.char_embedding_dim = self.options['char_cnn']['embedding']['dim']
@@ -39,7 +45,6 @@ class ElmoCharacterEncoderRestorer:
 
         self.named_parameters: Dict[str, torch.Tensor] = {}
 
-    def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         module = ElmoCharacterEncoder(
                 self.char_embedding_cnt,
                 self.char_embedding_dim,
@@ -149,6 +154,13 @@ class ElmoLstmRestorer:
         self.options = load_options(options_file)
         self.weight_file = weight_file
 
+    def restore(
+            self,
+            enable_forward: bool = False,
+            forward_requires_grad: bool = False,
+            enable_backward: bool = False,
+            backward_requires_grad: bool = False,
+    ) -> Tuple[StatefulUnidirectionalLstm, StatefulUnidirectionalLstm]:
         self.num_layers = self.options['lstm']['n_layers']
         self.input_size = self.options['lstm']['projection_dim']
         self.hidden_size = self.input_size
@@ -159,13 +171,6 @@ class ElmoLstmRestorer:
 
         self.named_parameters: Dict[str, torch.Tensor] = {}
 
-    def restore(
-            self,
-            enable_forward: bool = False,
-            forward_requires_grad: bool = False,
-            enable_backward: bool = False,
-            backward_requires_grad: bool = False,
-    ) -> Tuple[StatefulUnidirectionalLstm, StatefulUnidirectionalLstm]:
         fwd_lstm = None
         if enable_forward:
             fwd_lstm = StatefulUnidirectionalLstm(

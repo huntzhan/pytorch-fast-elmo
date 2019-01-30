@@ -1,6 +1,9 @@
 """
 Provide helper classes/functions to execute ELMo.
 """
+# pylint: disable=no-self-use
+# pylint: disable=arguments-differ
+
 from typing import List, Tuple, Optional, Dict, Union, Any
 
 import torch
@@ -50,8 +53,6 @@ def _bind_cpp_extension_parameters(
         )
 
 
-# pylint: disable=no-self-use
-# pylint: disable=arguments-differ
 class FastElmo(torch.nn.Module):  # type: ignore
 
     def __init__(
