@@ -48,7 +48,7 @@ setup(
     packages=find_packages(include=['pytorch_fast_elmo']),
     test_suite='tests',
     tests_require=test_requirements,
-    url='https://github.com/cnt-dev/pytorch_fast_elmo',
+    url='https://github.com/cnt-dev/pytorch-fast-elmo',
     version='0.2.2',
     zip_safe=False,
     # Pytorch Cpp Extension.

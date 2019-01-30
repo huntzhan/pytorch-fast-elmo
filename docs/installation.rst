@@ -32,13 +32,13 @@ You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/cnt-dev/pytorch_fast_elmo
+    $ git clone git://github.com/cnt-dev/pytorch-fast-elmo
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl  -OL https://github.com/cnt-dev/pytorch_fast_elmo/tarball/master
+    $ curl  -OL https://github.com/cnt-dev/pytorch-fast-elmo/tarball/master
 
 Once you have a copy of the source, you can install it with:
 
@@ -47,5 +47,5 @@ Once you have a copy of the source, you can install it with:
     $ python setup.py install
 
 
-.. _Github repo: https://github.com/cnt-dev/pytorch_fast_elmo
-.. _tarball: https://github.com/cnt-dev/pytorch_fast_elmo/tarball/master
+.. _Github repo: https://github.com/cnt-dev/pytorch-fast-elmo
+.. _tarball: https://github.com/cnt-dev/pytorch-fast-elmo/tarball/master
