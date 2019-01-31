@@ -150,7 +150,7 @@ def cache_char_cnn_vocab(
         max_characters_per_token: int = ElmoCharacterIdsConst.MAX_WORD_LENGTH,
         cuda: bool = False,
         batch_size: int = 256,
-):
+) -> None:
     """
     1. Load vocab.
     2. Feed vocab to Char CNN.
@@ -172,6 +172,8 @@ def cache_char_cnn_vocab(
         batch = vocab[batch_start:batch_start + batch_size]
         # (1, batch_size, max_characters_per_token)
         char_ids = batch_to_char_ids([batch], max_characters_per_token)
+        if cuda:
+            char_ids = char_ids.cuda()
 
         inputs = pack_inputs(char_ids)
         output_data = char_cnn(inputs.data)
@@ -185,7 +187,7 @@ def cache_char_cnn_vocab(
 
     # (vocab, output_dim)
     combined = torch.cat(cached, dim=0)
-    if combined.is_cuda:
+    if cuda:
         combined = combined.cpu()
     weight = combined.numpy()
 
