@@ -32,7 +32,7 @@ class RestorerBase:
     def __init__(
             self,
             options_file: Optional[str],
-            weight_file: str,
+            weight_file: Optional[str],
     ) -> None:
         self.options = load_options(options_file)
         self.weight_file = weight_file
@@ -42,6 +42,7 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
 
     def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         assert self.options and 'char_cnn' in self.options
+        assert self.weight_file
 
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
         self.char_embedding_cnt = self.options.get('n_characters', 261)
@@ -161,8 +162,9 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         """
         Returns (embedding, lstm_bos, lstm_eos)
         """
-
         assert self.options is None
+        assert self.weight_file
+
         with h5py.File(self.weight_file, 'r') as fin:
             assert 'embedding' in fin
 
@@ -196,7 +198,8 @@ class ElmoLstmRestorer(RestorerBase):
             enable_backward: bool = False,
             backward_requires_grad: bool = False,
     ) -> Tuple[StatefulUnidirectionalLstm, StatefulUnidirectionalLstm]:
-        assert self.options
+        assert self.options and 'lstm' in self.options
+        assert self.weight_file
 
         self.num_layers = self.options['lstm']['n_layers']
         self.input_size = self.options['lstm']['projection_dim']
