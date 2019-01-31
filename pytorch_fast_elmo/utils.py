@@ -1,4 +1,4 @@
-from typing import List, Tuple, Iterable
+from typing import List, Tuple, Iterable, Dict
 
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
@@ -18,6 +18,19 @@ def load_voacb(vocab_txt: str) -> List[str]:
             if word:
                 vocab.append(word)
     return vocab
+
+
+def build_vocab2id(vocab: List[str]) -> Dict[str, int]:
+    """
+    Adding one will be applied for padding.
+    """
+    assert len(vocab) > 3
+    assert vocab[:3] == ['<S>', '</S>', '<UNK>']
+    return {word: word_id for word_id, word in enumerate(vocab, start=1)}
+
+
+def load_and_build_vocab2id(vocab_txt: str) -> Dict[str, int]:
+    return build_vocab2id(load_voacb(vocab_txt))
 
 
 def pack_inputs(inputs: torch.Tensor) -> PackedSequence:
@@ -140,6 +153,26 @@ def batch_to_char_ids(
 
     # Stack to shape `(batch_size, max_timesteps, max_characters_per_token)`
     return torch.stack(rows)
+
+
+def batch_to_word_ids(batch: List[List[str]], vocab2id: Dict[str, int]) -> torch.Tensor:
+    """
+    For word embedding.
+
+    1. `batch` should have been sorted by length in reversed order.
+    2. UNK will be mapped to 3 since we assume the vocab starts with `<S>, </S>, <UNK>`.
+
+    Return tensor of shape `(batch_size, max_timesteps)`.
+    """
+    max_timesteps = len(batch[0])
+
+    rows = []
+    for words in batch:
+        row = [vocab2id.get(word, 3) for word in words]
+        row.extend([0] * (max_timesteps - len(row)))
+        rows.append(row)
+
+    return torch.LongTensor(rows)
 
 
 def cache_char_cnn_vocab(
