@@ -14,6 +14,7 @@ from _pytorch_fast_elmo import (
 )
 from pytorch_fast_elmo.restore import (
         ElmoCharacterEncoderRestorer,
+        ElmoWordEmbeddingRestorer,
         ElmoLstmRestorer,
 )
 from pytorch_fast_elmo.integrate import FastElmo

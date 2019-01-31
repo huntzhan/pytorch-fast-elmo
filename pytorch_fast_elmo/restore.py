@@ -24,7 +24,7 @@ def freeze_parameters(named_parameters: Dict[str, torch.Tensor]) -> None:
         param.requires_grad = False
 
 
-class ElmoCharacterEncoderRestorer:
+class RestorerBase:
 
     def __init__(
             self,
@@ -34,7 +34,12 @@ class ElmoCharacterEncoderRestorer:
         self.options = load_options(options_file)
         self.weight_file = weight_file
 
+
+class ElmoCharacterEncoderRestorer(RestorerBase):
+
     def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
+        assert 'char_cnn' in self.options
+
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
         self.char_embedding_cnt = self.options.get('n_characters', 261)
         self.char_embedding_dim = self.options['char_cnn']['embedding']['dim']
@@ -144,15 +149,28 @@ class ElmoCharacterEncoderRestorer:
         self.named_parameters[bias_name].data.copy_(torch.FloatTensor(bias))
 
 
-class ElmoLstmRestorer:
+class ElmoWordEmbeddingRestorer(RestorerBase):
 
-    def __init__(
-            self,
-            options_file: str,
-            weight_file: str,
-    ) -> None:
-        self.options = load_options(options_file)
-        self.weight_file = weight_file
+    def restore(self, requires_grad: bool = False) -> torch.nn.Embedding:
+        with h5py.File(self.weight_file, 'r') as fin:
+            assert 'embedding' in fin
+
+            ebd_weight = fin['embedding'][...]
+
+            # Since bilm-tf doesn't include padding,
+            # we need to prepend a padding row in index 0.
+            ebd = torch.nn.Embedding(
+                    ebd_weight.shape[0] + 1,
+                    ebd_weight.shape[1],
+                    padding_idx=0,
+            )
+            ebd.weight.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
+            ebd.weight.requires_grad = requires_grad
+
+            return ebd
+
+
+class ElmoLstmRestorer(RestorerBase):
 
     def restore(
             self,

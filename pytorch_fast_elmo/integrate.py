@@ -10,7 +10,7 @@ import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
 
 from pytorch_fast_elmo import (  # type: ignore
-        ElmoCharacterEncoderRestorer, ElmoLstmRestorer, ScalarMix,
+        ElmoCharacterEncoderRestorer, ElmoWordEmbeddingRestorer, ElmoLstmRestorer, ScalarMix,
 )
 
 
@@ -53,7 +53,7 @@ def _bind_cpp_extension_parameters(
         )
 
 
-class FastElmo(torch.nn.Module):  # type: ignore
+class FastElmoBase(torch.nn.Module):  # type: ignore
 
     def __init__(
             self,
@@ -63,9 +63,14 @@ class FastElmo(torch.nn.Module):  # type: ignore
             weight_file: str,
 
             # Controls the behavior of restorer.
-            # `ElmoCharacterEncoder`.
+            # Note: following options should match the `options_file`.
+            # Char CNN.
             disable_char_cnn: bool = False,
             char_cnn_requires_grad: bool = False,
+
+            # Word Embedding.
+            disable_word_embedding: bool = True,
+            word_embedding_requires_grad: bool = False,
 
             # The forward LSTM.
             disable_forward_lstm: bool = False,
@@ -90,6 +95,7 @@ class FastElmo(torch.nn.Module):  # type: ignore
         super().__init__()
 
         self.disable_char_cnn = disable_char_cnn
+        self.disable_word_embedding = disable_word_embedding
         self.disable_forward_lstm = disable_forward_lstm
         self.disable_backward_lstm = disable_backward_lstm
         self.disable_scalar_mix = disable_scalar_mix
@@ -101,6 +107,16 @@ class FastElmo(torch.nn.Module):  # type: ignore
         )
         if not disable_char_cnn:
             self.char_cnn = self.char_cnn_restorer.restore(requires_grad=char_cnn_requires_grad)
+
+        # Word Embedding.
+        self.word_embedding_restorer = ElmoWordEmbeddingRestorer(
+                options_file,
+                weight_file,
+        )
+        if not disable_word_embedding:
+            # Not a cpp extension.
+            self.word_embedding = self.word_embedding_restorer.restore(
+                    requires_grad=word_embedding_requires_grad,)
 
         # LSTM.
         self.lstm_restorer = ElmoLstmRestorer(
@@ -322,6 +338,13 @@ class FastElmo(torch.nn.Module):  # type: ignore
         output_data = self.char_cnn(inputs.data)
         return PackedSequence(output_data, inputs.batch_sizes)
 
+    def call_word_embedding(self, inputs: PackedSequence) -> PackedSequence:
+        """
+        Word embedding.
+        """
+        output_data = self.word_embedding(inputs.data)
+        return PackedSequence(output_data, inputs.batch_sizes)
+
     def call_forward_lstm(
             self,
             inputs: PackedSequence,
@@ -427,9 +450,14 @@ class FastElmo(torch.nn.Module):  # type: ignore
 
     def pack_inputs(self, inputs: torch.Tensor) -> PackedSequence:
         """
-        Pack inputs of shape `(batch_size, timesteps, max_characters_per_token)`
+        Pack inputs of shape `(batch_size, timesteps, x)` or `(batch_size, timesteps)`.
+        Padding value should be 0.
         """
-        lengths = ((inputs > 0).long().sum(dim=-1) > 0).long().sum(dim=-1)
+        if inputs.dim() == 2:
+            lengths = (inputs > 0).long().sum(dim=-1)
+        elif inputs.dim() == 3:
+            lengths = ((inputs > 0).long().sum(dim=-1) > 0).long().sum(dim=-1)
+
         return pack_padded_sequence(inputs, lengths, batch_first=True)
 
     def unpack_outputs(
@@ -450,6 +478,12 @@ class FastElmo(torch.nn.Module):  # type: ignore
         range_tensor = ones.cumsum(dim=-1)
         mask = (lengths.unsqueeze(1) >= range_tensor).long()
         return tensor, mask
+
+    def forward(self):  # type: ignore
+        raise NotImplementedError()
+
+
+class FastElmo(FastElmoBase):  # type: ignore
 
     def forward(
             self,
