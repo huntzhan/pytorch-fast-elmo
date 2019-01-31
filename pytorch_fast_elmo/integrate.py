@@ -4,7 +4,7 @@ Provide helper classes/functions to execute ELMo.
 # pylint: disable=no-self-use
 # pylint: disable=arguments-differ
 
-from typing import List, Tuple, Optional, Dict, Union, Any
+from typing import List, Tuple, Optional, Dict, Union, Any, Set
 
 import torch
 from torch.nn.utils.rnn import PackedSequence
@@ -43,7 +43,22 @@ def _bind_cpp_extension_parameters(
         )
 
 
+def _raise_if_kwargs_is_invalid(allowed: Set[str], kwargs: Dict[str, Any]) -> None:
+    invalid_keys = set(kwargs) - allowed
+    if invalid_keys:
+        msg = '\n'.join('invalid kwargs: {}'.format(key) for key in invalid_keys)
+        raise ValueError(msg)
+
+
 class FastElmoBase(torch.nn.Module):  # type: ignore
+
+    SCALAR_MIX_PARAMS = {
+            'disable_scalar_mix',
+            'num_output_representations',
+            'output_representation_dropout',
+            'scalar_mix_parameters',
+            'do_layer_norm',
+    }
 
     def __init__(
             self,
@@ -439,30 +454,16 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return utils.unpack_outputs(inputs, skip_mask)
 
-    def forward(self):  # type: ignore
-        raise NotImplementedError()
-
-
-class FastElmo(FastElmoBase):
-
-    def forward(  # type: ignore
+    def _call_bilstm_and_scalar_mix(
             self,
-            inputs: torch.Tensor,
-            bos_eos: bool = True,
+            token_repr: PackedSequence,
+            bos_eos: bool,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
-        """
-        The default workflow (same as AllenNLP).
-        """
-        # Convert to `PackedSequence`
-        packed_inputs = self.pack_inputs(inputs)
-
-        # Char CNN.
-        char_repr = self.call_char_cnn(packed_inputs)
         # BiLSTM.
-        bilstm_repr = self.call_bilstm(char_repr, bos_eos)
+        bilstm_repr = self.call_bilstm(token_repr, bos_eos)
         # Scalar Mix.
         conbimed_repr = self.combine_char_cnn_and_bilstm_outputs(
-                char_repr,
+                token_repr,
                 self.concat_packed_sequences(bilstm_repr),
         )
         mixed_reprs = self.call_scalar_mix(conbimed_repr)
@@ -475,3 +476,71 @@ class FastElmo(FastElmoBase):
             elmo_representations.append(mixed_repr_unpacked)
 
         return {'elmo_representations': elmo_representations, 'mask': mask}
+
+    def forward(self):  # type: ignore
+        raise NotImplementedError()
+
+
+class FastElmo(FastElmoBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(
+                self.SCALAR_MIX_PARAMS | {
+                        'char_cnn_requires_grad',
+                        'forward_lstm_requires_grad',
+                        'backward_lstm_requires_grad',
+                }, kwargs)
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def forward(  # type: ignore
+            self,
+            inputs: torch.Tensor,
+            bos_eos: bool = True,
+    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
+        """
+        The default workflow (same as AllenNLP).
+
+        `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
+        """
+        packed_inputs = self.pack_inputs(inputs)
+        token_repr = self.call_char_cnn(packed_inputs)
+        return self._call_bilstm_and_scalar_mix(token_repr, bos_eos)
+
+
+class FastElmoWordEmbedding(FastElmoBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(
+                self.SCALAR_MIX_PARAMS | {
+                        'word_embedding_weight_file',
+                        'word_embedding_requires_grad',
+                        'forward_lstm_requires_grad',
+                        'backward_lstm_requires_grad',
+                }, kwargs)
+
+        kwargs['disable_char_cnn'] = True
+        kwargs['disable_word_embedding'] = False
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def forward(  # type: ignore
+            self,
+            inputs: torch.Tensor,
+            bos_eos: bool = True,
+    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
+        """
+        `inputs` of shape `(batch_size, max_timesteps)
+        """
+        packed_inputs = self.pack_inputs(inputs)
+        token_repr = self.call_word_embedding(pack_inputs)
+        return self._call_bilstm_and_scalar_mix(token_repr, bos_eos)
+
