@@ -2,6 +2,7 @@ from typing import List, Tuple, Iterable
 
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
+import h5py
 
 from pytorch_fast_elmo.restore import ElmoCharacterEncoderRestorer
 
@@ -146,16 +147,19 @@ def cache_char_cnn_vocab(
         options_file: str,
         weight_file: str,
         hdf5_out: str,
+        max_characters_per_token: int = ElmoCharacterIdsConst.MAX_WORD_LENGTH,
         cuda: bool = False,
-        batch_size: int = 32,
+        batch_size: int = 256,
 ):
     """
     1. Load vocab.
     2. Feed vocab to Char CNN.
     3. Dump reprs to HDF5. (will be loaded by `ElmoWordEmbeddingRestorer`).
     """
+    # 1.
     vocab = load_voacb(vocab_txt)
 
+    # 2.
     char_cnn = ElmoCharacterEncoderRestorer(
             options_file,
             weight_file,
@@ -163,6 +167,29 @@ def cache_char_cnn_vocab(
     if cuda:
         char_cnn.cuda()
 
+    cached = []
     for batch_start in range(0, len(vocab), batch_size):
         batch = vocab[batch_start:batch_start + batch_size]
-        # TODO.
+        # (1, batch_size, max_characters_per_token)
+        char_ids = batch_to_char_ids([batch], max_characters_per_token)
+
+        inputs = pack_inputs(char_ids)
+        output_data = char_cnn(inputs.data)
+        # (1, batch_size, output_dim)
+        char_reprs, _ = unpack_outputs(
+                PackedSequence(output_data, inputs.batch_sizes),
+                skip_mask=True,
+        )
+        # (batch_size, output_dim)
+        cached.append(char_reprs.squeeze(0))
+
+    # (vocab, output_dim)
+    combined = torch.cat(cached, dim=0)
+    if combined.is_cuda:
+        combined = combined.cpu()
+    weight = combined.numpy()
+
+    # 3.
+    with h5py.File(hdf5_out, 'w') as fout:
+        dset = fout.create_dataset('embedding', weight.shape, dtype='float32')
+        dset[...] = weight
