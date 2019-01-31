@@ -4,7 +4,7 @@ from allennlp.modules.elmo import batch_to_ids
 import numpy as np
 
 from pytorch_fast_elmo import utils
-from pytorch_fast_elmo.integrate import FastElmoBase
+from pytorch_fast_elmo import FastElmoBase
 
 FIXTURES_FODLER = join(dirname(__file__), 'fixtures')
 ELMO_OPTIONS_FILE = join(FIXTURES_FODLER, 'options.json')

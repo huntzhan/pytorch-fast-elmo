@@ -154,7 +154,14 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
 
 class ElmoWordEmbeddingRestorer(RestorerBase):
 
-    def restore(self, requires_grad: bool = False) -> torch.nn.Embedding:
+    def restore(
+            self,
+            requires_grad: bool = False,
+    ) -> Tuple[torch.nn.Embedding, torch.Tensor, torch.Tensor]:
+        """
+        Returns (embedding, lstm_bos, lstm_eos)
+        """
+
         assert self.options is None
         with h5py.File(self.weight_file, 'r') as fin:
             assert 'embedding' in fin
@@ -171,7 +178,13 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
             ebd.weight.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
             ebd.weight.requires_grad = requires_grad
 
-            return ebd
+            lstm_bos_weight = fin['lstm']['bos'][...]
+            lstm_bos_repr = torch.from_numpy(lstm_bos_weight)
+
+            lstm_eos_weight = fin['lstm']['eos'][...]
+            lstm_eos_repr = torch.from_numpy(lstm_eos_weight)
+
+            return ebd, lstm_bos_repr, lstm_eos_repr
 
 
 class ElmoLstmRestorer(RestorerBase):

@@ -19,11 +19,16 @@ from pytorch_fast_elmo import (
         ElmoCharacterEncoderRestorer,
         ElmoLstmRestorer,
         FastElmo,
+        FastElmoWordEmbedding,
+        utils,
 )
 
 FIXTURES_FODLER = join(dirname(__file__), 'fixtures')
 ELMO_OPTIONS_FILE = join(FIXTURES_FODLER, 'options.json')
 ELMO_WEIGHT_FILE = join(FIXTURES_FODLER, 'lm_weights.hdf5')
+
+CACHE_VOCAB_FILE = join(FIXTURES_FODLER, 'vocab.txt')
+CACHE_EBD_FILE = join(FIXTURES_FODLER, 'lm_ebd.hdf5')
 
 
 def test_elmo_character_encoder_simple():
@@ -360,3 +365,26 @@ def test_fast_elmo_save_and_load():
 
     assert float(fast_2.cpp_ext_scalar_mix_0_scalar_0) == 42.
     assert float(fast_2.scalar_mixes[0].named_parameters()['scalar_0']) == 42.
+
+
+def test_fast_elmo_word_embedding():
+    vocab = utils.load_vocab(CACHE_VOCAB_FILE)
+
+    fast_char_cnn = FastElmo(
+            ELMO_OPTIONS_FILE,
+            ELMO_WEIGHT_FILE,
+    )
+
+    fast_word_ebd = FastElmoWordEmbedding(
+            ELMO_OPTIONS_FILE,
+            ELMO_WEIGHT_FILE,
+            word_embedding_weight_file=CACHE_EBD_FILE,
+    )
+
+    ebd_repr = fast_word_ebd(utils.batch_to_word_ids([vocab], utils.build_vocab2id(vocab)))
+    char_cnn_repr = fast_char_cnn(utils.batch_to_char_ids([vocab]))
+
+    np.testing.assert_array_almost_equal(
+            ebd_repr['elmo_representations'][0].data.numpy(),
+            char_cnn_repr['elmo_representations'][0].data.numpy(),
+    )

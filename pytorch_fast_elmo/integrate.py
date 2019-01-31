@@ -1,8 +1,7 @@
 """
 Provide helper classes/functions to execute ELMo.
 """
-# pylint: disable=no-self-use
-# pylint: disable=arguments-differ
+# pylint: disable=no-self-use,arguments-differ,too-many-public-methods
 
 from typing import List, Tuple, Optional, Dict, Union, Any, Set
 
@@ -122,8 +121,8 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         )
         if not disable_word_embedding:
             # Not a cpp extension.
-            self.word_embedding = self.word_embedding_restorer.restore(
-                    requires_grad=word_embedding_requires_grad,)
+            self.word_embedding, lstm_bos_repr, lstm_eos_repr = \
+                    self.word_embedding_restorer.restore(requires_grad=word_embedding_requires_grad)
 
         # LSTM.
         self.lstm_restorer = ElmoLstmRestorer(
@@ -146,21 +145,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                 self.lstm_eos_repr = lstm_eos_repr
 
             else:
-                # [<bow>, <bos/eos>, <eow>, max(kernal)...]
-                max_characters_per_token = max(
-                        kernal_size for kernal_size, _ in self.char_cnn_restorer.filters)
-                max_characters_per_token += 3
-
-                bos_ids = utils.make_bos(max_characters_per_token)
-                eos_ids = utils.make_eos(max_characters_per_token)
-
-                # On CPU.
-                bos_eos = torch.LongTensor([bos_ids, eos_ids])
-                with torch.no_grad():
-                    bos_eos_reprs = self.char_cnn(bos_eos)
-
-                self.lstm_bos_repr = bos_eos_reprs[0]
-                self.lstm_eos_repr = bos_eos_reprs[1]
+                self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
+                        self.char_cnn_restorer,
+                        self.char_cnn,
+                )
 
         # ScalarMix
         if not disable_scalar_mix:
@@ -541,6 +529,5 @@ class FastElmoWordEmbedding(FastElmoBase):
         `inputs` of shape `(batch_size, max_timesteps)
         """
         packed_inputs = self.pack_inputs(inputs)
-        token_repr = self.call_word_embedding(pack_inputs)
+        token_repr = self.call_word_embedding(packed_inputs)
         return self._call_bilstm_and_scalar_mix(token_repr, bos_eos)
-

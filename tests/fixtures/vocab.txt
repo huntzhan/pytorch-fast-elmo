@@ -1,0 +1,17 @@
+<S>
+</S>
+<UNK>
+a
+Another
+one
+Here
+This
+'s
+sentence
+is
+ELMo
+.
+helps
+disambiguate
+The
+from

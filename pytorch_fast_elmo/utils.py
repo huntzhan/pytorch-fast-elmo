@@ -5,9 +5,10 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, Packed
 import h5py
 
 from pytorch_fast_elmo.restore import ElmoCharacterEncoderRestorer
+from _pytorch_fast_elmo import ElmoCharacterEncoder  # pylint: disable=no-name-in-module
 
 
-def load_voacb(vocab_txt: str) -> List[str]:
+def load_vocab(vocab_txt: str) -> List[str]:
     """
     Use the same format as bilm-tf.
     """
@@ -30,7 +31,7 @@ def build_vocab2id(vocab: List[str]) -> Dict[str, int]:
 
 
 def load_and_build_vocab2id(vocab_txt: str) -> Dict[str, int]:
-    return build_vocab2id(load_voacb(vocab_txt))
+    return build_vocab2id(load_vocab(vocab_txt))
 
 
 def pack_inputs(inputs: torch.Tensor) -> PackedSequence:
@@ -175,6 +176,27 @@ def batch_to_word_ids(batch: List[List[str]], vocab2id: Dict[str, int]) -> torch
     return torch.LongTensor(rows)
 
 
+def get_bos_eos_token_repr(
+        char_cnn_restorer: ElmoCharacterEncoderRestorer,
+        char_cnn: ElmoCharacterEncoder,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    # [<bow>, <bos/eos>, <eow>, max(kernal)...]
+    max_characters_per_token = max(kernal_size for kernal_size, _ in char_cnn_restorer.filters)
+    max_characters_per_token += 3
+
+    bos_ids = make_bos(max_characters_per_token)
+    eos_ids = make_eos(max_characters_per_token)
+    bos_eos = torch.LongTensor([bos_ids, eos_ids])
+
+    if char_cnn.parameters()[0].is_cuda:
+        bos_eos = bos_eos.cuda()
+
+    with torch.no_grad():
+        bos_eos_reprs = char_cnn(bos_eos)
+
+    return bos_eos_reprs[0], bos_eos_reprs[1]
+
+
 def cache_char_cnn_vocab(
         vocab_txt: str,
         options_file: str,
@@ -187,16 +209,18 @@ def cache_char_cnn_vocab(
     """
     1. Load vocab.
     2. Feed vocab to Char CNN.
-    3. Dump reprs to HDF5. (will be loaded by `ElmoWordEmbeddingRestorer`).
+    3. Feed BOS/EOS to Char CNN.
+    4. Dump reprs to HDF5. (will be loaded by `ElmoWordEmbeddingRestorer`).
     """
     # 1.
-    vocab = load_voacb(vocab_txt)
+    vocab = load_vocab(vocab_txt)
 
     # 2.
-    char_cnn = ElmoCharacterEncoderRestorer(
+    char_cnn_restorer = ElmoCharacterEncoderRestorer(
             options_file,
             weight_file,
-    ).restore(requires_grad=False)
+    )
+    char_cnn = char_cnn_restorer.restore(requires_grad=False)
     if cuda:
         char_cnn.cuda()
 
@@ -222,9 +246,27 @@ def cache_char_cnn_vocab(
     combined = torch.cat(cached, dim=0)
     if cuda:
         combined = combined.cpu()
-    weight = combined.numpy()
+    embedding_weight = combined.numpy()
 
     # 3.
+    lstm_bos_repr, lstm_eos_repr = get_bos_eos_token_repr(
+            char_cnn_restorer,
+            char_cnn,
+    )
+    if cuda:
+        lstm_bos_repr = lstm_bos_repr.cpu()
+        lstm_eos_repr = lstm_eos_repr.cpu()
+
+    lstm_bos_weight = lstm_bos_repr.numpy()
+    lstm_eos_weight = lstm_eos_repr.numpy()
+
+    # 4.
     with h5py.File(hdf5_out, 'w') as fout:
-        dset = fout.create_dataset('embedding', weight.shape, dtype='float32')
-        dset[...] = weight
+        dset = fout.create_dataset('embedding', embedding_weight.shape, dtype='float32')
+        dset[...] = embedding_weight
+
+        dset = fout.create_dataset('lstm/bos', lstm_bos_weight.shape, dtype='float32')
+        dset[...] = lstm_bos_weight
+
+        dset = fout.create_dataset('lstm/eos', lstm_eos_weight.shape, dtype='float32')
+        dset[...] = lstm_eos_weight
