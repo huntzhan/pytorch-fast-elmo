@@ -3,7 +3,7 @@ Follows AllenNLP.
 """
 # pylint: disable=attribute-defined-outside-init
 
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, Optional
 import json
 
 import torch
@@ -11,12 +11,15 @@ import h5py
 import numpy as np
 
 from pytorch_stateful_lstm import StatefulUnidirectionalLstm
-from pytorch_fast_elmo import ElmoCharacterEncoder  # type: ignore
+from _pytorch_fast_elmo import ElmoCharacterEncoder  # pylint: disable=no-name-in-module
 
 
-def load_options(options_file: str):  # type: ignore
-    with open(options_file) as fin:
-        return json.load(fin)
+def load_options(options_file: Optional[str]):  # type: ignore
+    if options_file is None:
+        return None
+    else:
+        with open(options_file) as fin:
+            return json.load(fin)
 
 
 def freeze_parameters(named_parameters: Dict[str, torch.Tensor]) -> None:
@@ -28,7 +31,7 @@ class RestorerBase:
 
     def __init__(
             self,
-            options_file: str,
+            options_file: Optional[str],
             weight_file: str,
     ) -> None:
         self.options = load_options(options_file)
@@ -38,7 +41,7 @@ class RestorerBase:
 class ElmoCharacterEncoderRestorer(RestorerBase):
 
     def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
-        assert 'char_cnn' in self.options
+        assert self.options and 'char_cnn' in self.options
 
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
         self.char_embedding_cnt = self.options.get('n_characters', 261)
@@ -152,6 +155,7 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
 class ElmoWordEmbeddingRestorer(RestorerBase):
 
     def restore(self, requires_grad: bool = False) -> torch.nn.Embedding:
+        assert self.options is None
         with h5py.File(self.weight_file, 'r') as fin:
             assert 'embedding' in fin
 
@@ -179,6 +183,8 @@ class ElmoLstmRestorer(RestorerBase):
             enable_backward: bool = False,
             backward_requires_grad: bool = False,
     ) -> Tuple[StatefulUnidirectionalLstm, StatefulUnidirectionalLstm]:
+        assert self.options
+
         self.num_layers = self.options['lstm']['n_layers']
         self.input_size = self.options['lstm']['projection_dim']
         self.hidden_size = self.input_size

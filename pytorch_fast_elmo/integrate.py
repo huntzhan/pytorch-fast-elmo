@@ -7,25 +7,15 @@ Provide helper classes/functions to execute ELMo.
 from typing import List, Tuple, Optional, Dict, Union, Any
 
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
+from torch.nn.utils.rnn import PackedSequence
 
-from pytorch_fast_elmo import (  # type: ignore
-        ElmoCharacterEncoderRestorer, ElmoWordEmbeddingRestorer, ElmoLstmRestorer, ScalarMix,
+from pytorch_fast_elmo.restore import (
+        ElmoCharacterEncoderRestorer,
+        ElmoWordEmbeddingRestorer,
+        ElmoLstmRestorer,
 )
-
-
-def _make_bos_eos(
-        character: int,
-        padding_character: int,
-        beginning_of_word_character: int,
-        end_of_word_character: int,
-        max_word_length: int,
-) -> List[int]:
-    char_ids = [padding_character] * max_word_length
-    char_ids[0] = beginning_of_word_character
-    char_ids[1] = character
-    char_ids[2] = end_of_word_character
-    return [c + 1 for c in char_ids]
+from pytorch_fast_elmo import utils
+from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
 
 
 def _bind_cpp_extension_parameters(
@@ -70,6 +60,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
             # Word Embedding.
             disable_word_embedding: bool = True,
+            word_embedding_weight_file: Optional[str] = None,
             word_embedding_requires_grad: bool = False,
 
             # The forward LSTM.
@@ -110,8 +101,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
         # Word Embedding.
         self.word_embedding_restorer = ElmoWordEmbeddingRestorer(
-                options_file,
-                weight_file,
+                None,
+                # By default use `weight_file`.
+                word_embedding_weight_file or weight_file,
         )
         if not disable_word_embedding:
             # Not a cpp extension.
@@ -143,20 +135,8 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         kernal_size for kernal_size, _ in self.char_cnn_restorer.filters)
                 max_characters_per_token += 3
 
-                bos_ids = _make_bos_eos(
-                        256,  # bos
-                        260,  # pad
-                        258,  # bow
-                        259,  # eow
-                        max_characters_per_token,
-                )
-                eos_ids = _make_bos_eos(
-                        257,  # eos
-                        260,  # pad
-                        258,  # bow
-                        259,  # eow
-                        max_characters_per_token,
-                )
+                bos_ids = utils.make_bos(max_characters_per_token)
+                eos_ids = utils.make_eos(max_characters_per_token)
 
                 # On CPU.
                 bos_eos = torch.LongTensor([bos_ids, eos_ids])
@@ -449,49 +429,28 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         return reprs
 
     def pack_inputs(self, inputs: torch.Tensor) -> PackedSequence:
-        """
-        Pack inputs of shape `(batch_size, timesteps, x)` or `(batch_size, timesteps)`.
-        Padding value should be 0.
-        """
-        if inputs.dim() == 2:
-            lengths = (inputs > 0).long().sum(dim=-1)
-        elif inputs.dim() == 3:
-            lengths = ((inputs > 0).long().sum(dim=-1) > 0).long().sum(dim=-1)
-
-        return pack_padded_sequence(inputs, lengths, batch_first=True)
+        return utils.pack_inputs(inputs)
 
     def unpack_outputs(
             self,
             inputs: PackedSequence,
             skip_mask: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Unpack the final result and return `(tensor, mask)`.
-        """
-        tensor, lengths = pad_packed_sequence(inputs, batch_first=True)
-        if skip_mask:
-            return tensor, None
-        if tensor.is_cuda:
-            lengths = lengths.cuda()
-
-        ones = lengths.new_ones(tensor.shape[0], tensor.shape[1], dtype=torch.long)
-        range_tensor = ones.cumsum(dim=-1)
-        mask = (lengths.unsqueeze(1) >= range_tensor).long()
-        return tensor, mask
+        return utils.unpack_outputs(inputs, skip_mask)
 
     def forward(self):  # type: ignore
         raise NotImplementedError()
 
 
-class FastElmo(FastElmoBase):  # type: ignore
+class FastElmo(FastElmoBase):
 
-    def forward(
+    def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
             bos_eos: bool = True,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         """
-        The full workflow (same as AllenNLP).
+        The default workflow (same as AllenNLP).
         """
         # Convert to `PackedSequence`
         packed_inputs = self.pack_inputs(inputs)
