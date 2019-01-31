@@ -381,8 +381,10 @@ def test_fast_elmo_word_embedding():
             word_embedding_weight_file=CACHE_EBD_FILE,
     )
 
-    ebd_repr = fast_word_ebd(utils.batch_to_word_ids([vocab], utils.build_vocab2id(vocab)))
-    char_cnn_repr = fast_char_cnn(utils.batch_to_char_ids([vocab]))
+    words = vocab[2:]
+
+    ebd_repr = fast_word_ebd(utils.batch_to_word_ids([words], utils.build_vocab2id(vocab)))
+    char_cnn_repr = fast_char_cnn(utils.batch_to_char_ids([words]))
 
     np.testing.assert_array_almost_equal(
             ebd_repr['elmo_representations'][0].data.numpy(),

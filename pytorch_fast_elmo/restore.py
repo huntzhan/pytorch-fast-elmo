@@ -180,11 +180,8 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
             ebd.weight.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
             ebd.weight.requires_grad = requires_grad
 
-            lstm_bos_weight = fin['lstm']['bos'][...]
-            lstm_bos_repr = torch.from_numpy(lstm_bos_weight)
-
-            lstm_eos_weight = fin['lstm']['eos'][...]
-            lstm_eos_repr = torch.from_numpy(lstm_eos_weight)
+            lstm_bos_repr = ebd.weight.data[1]
+            lstm_eos_repr = ebd.weight.data[2]
 
             return ebd, lstm_bos_repr, lstm_eos_repr
 

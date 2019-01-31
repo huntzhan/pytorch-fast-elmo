@@ -260,13 +260,10 @@ def cache_char_cnn_vocab(
     lstm_bos_weight = lstm_bos_repr.numpy()
     lstm_eos_weight = lstm_eos_repr.numpy()
 
+    embedding_weight[0] = lstm_bos_weight
+    embedding_weight[1] = lstm_eos_weight
+
     # 4.
     with h5py.File(hdf5_out, 'w') as fout:
         dset = fout.create_dataset('embedding', embedding_weight.shape, dtype='float32')
         dset[...] = embedding_weight
-
-        dset = fout.create_dataset('lstm/bos', lstm_bos_weight.shape, dtype='float32')
-        dset[...] = lstm_bos_weight
-
-        dset = fout.create_dataset('lstm/eos', lstm_eos_weight.shape, dtype='float32')
-        dset[...] = lstm_eos_weight

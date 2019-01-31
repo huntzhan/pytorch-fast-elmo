@@ -116,11 +116,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         # Word Embedding.
         self.word_embedding_restorer = ElmoWordEmbeddingRestorer(
                 None,
-                word_embedding_weight_file,
+                word_embedding_weight_file or weight_file,
         )
         if not disable_word_embedding:
-            if word_embedding_weight_file is None:
-                raise ValueError('word_embedding_weight_file not provided.')
             # Not a cpp extension.
             self.word_embedding, lstm_bos_repr, lstm_eos_repr = \
                     self.word_embedding_restorer.restore(requires_grad=word_embedding_requires_grad)
