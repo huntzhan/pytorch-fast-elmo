@@ -280,3 +280,21 @@ def cache_char_cnn_vocab(
     with h5py.File(hdf5_out, 'w') as fout:
         dset = fout.create_dataset('embedding', embedding_weight.shape, dtype='float32')
         dset[...] = embedding_weight
+
+
+def sort_batch_by_length(
+        batch: torch.Tensor,
+        lengths: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Similar to AllenNLP.
+
+    `batch` of shape `(batch_size, max_timesteps, *)`
+    `sequence_lengths` of shape `(batch_size,)`
+
+    Returns (sorted_batch, restoration_index)
+    """
+    _, permutation_index = lengths.sort(0, descending=True)
+    sorted_batch = batch.index_select(0, permutation_index)
+    _, restoration_index = permutation_index.sort(0, descending=False)
+    return sorted_batch, restoration_index

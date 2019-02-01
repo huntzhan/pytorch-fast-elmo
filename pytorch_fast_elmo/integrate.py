@@ -58,6 +58,11 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             'scalar_mix_parameters',
             'do_layer_norm',
     }
+    EXEC_PARAMS = {
+            'exec_managed_lstm_bos_eos',
+            'exec_sort_batch',
+    }
+    COMMON_PARAMS = SCALAR_MIX_PARAMS | EXEC_PARAMS
 
     def __init__(
             self,
@@ -66,29 +71,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             options_file: Optional[str],
             weight_file: Optional[str],
 
-            # Controls the behavior of restorer.
-            # Note: following options should match the `options_file`.
-            # Char CNN.
-            disable_char_cnn: bool = False,
-            char_cnn_requires_grad: bool = False,
-
-            # Word Embedding.
-            disable_word_embedding: bool = True,
-            word_embedding_weight_file: Optional[str] = None,
-            word_embedding_requires_grad: bool = False,
-
-            # The forward LSTM.
-            disable_forward_lstm: bool = False,
-            forward_lstm_requires_grad: bool = False,
-
-            # The backward LSTM.
-            disable_backward_lstm: bool = False,
-            backward_lstm_requires_grad: bool = False,
-
-            # Provide the BOS/EOS representations of shape `(projection_dim,)`
-            # if char CNN is disabled.
-            lstm_bos_repr: Optional[torch.Tensor] = None,
-            lstm_eos_repr: Optional[torch.Tensor] = None,
+            # Controls the behavior of execution.
+            exec_managed_lstm_bos_eos: bool = True,
+            exec_sort_batch: bool = True,
 
             # Controls the behavior of `ScalarMix`.
             disable_scalar_mix: bool = False,
@@ -96,6 +81,26 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             output_representation_dropout: float = 0.0,
             scalar_mix_parameters: Optional[List[float]] = None,
             do_layer_norm: bool = False,
+
+            # Controls the behavior of restorer.
+            # Note: following options should match the `options_file`.
+            # Char CNN.
+            disable_char_cnn: bool = False,
+            char_cnn_requires_grad: bool = False,
+            # Word Embedding.
+            disable_word_embedding: bool = True,
+            word_embedding_weight_file: Optional[str] = None,
+            word_embedding_requires_grad: bool = False,
+            # The forward LSTM.
+            disable_forward_lstm: bool = False,
+            forward_lstm_requires_grad: bool = False,
+            # The backward LSTM.
+            disable_backward_lstm: bool = False,
+            backward_lstm_requires_grad: bool = False,
+            # Provide the BOS/EOS representations of shape `(projection_dim,)`
+            # if char CNN is disabled.
+            lstm_bos_repr: Optional[torch.Tensor] = None,
+            lstm_eos_repr: Optional[torch.Tensor] = None,
     ) -> None:
         super().__init__()
 
@@ -104,6 +109,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         self.disable_forward_lstm = disable_forward_lstm
         self.disable_backward_lstm = disable_backward_lstm
         self.disable_scalar_mix = disable_scalar_mix
+
+        self.exec_managed_lstm_bos_eos = exec_managed_lstm_bos_eos
+        self.exec_sort_batch = exec_sort_batch
 
         # Char CNN.
         self.char_cnn_restorer = ElmoCharacterEncoderRestorer(
@@ -294,96 +302,93 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     def get_batched_lstm_eos_repr(self, batch_size: int) -> PackedSequence:
         return self.get_batched_lstm_bos_eos_repr('lstm_eos_repr', batch_size)
 
-    def call_forward_lstm_bos(self, batch_size: int) -> None:
+    def exec_forward_lstm_bos(self, batch_size: int) -> None:
         batched = self.get_batched_lstm_bos_repr(batch_size)
         with torch.no_grad():
             self.forward_lstm(batched.data, batched.batch_sizes)
 
-    def call_forward_lstm_eos(self, batch_size: int) -> None:
+    def exec_forward_lstm_eos(self, batch_size: int) -> None:
         batched = self.get_batched_lstm_eos_repr(batch_size)
         with torch.no_grad():
             self.forward_lstm(batched.data, batched.batch_sizes)
 
-    def call_backward_lstm_bos(self, batch_size: int) -> None:
+    def exec_backward_lstm_bos(self, batch_size: int) -> None:
         batched = self.get_batched_lstm_bos_repr(batch_size)
         with torch.no_grad():
             self.backward_lstm(batched.data, batched.batch_sizes)
 
-    def call_backward_lstm_eos(self, batch_size: int) -> None:
+    def exec_backward_lstm_eos(self, batch_size: int) -> None:
         batched = self.get_batched_lstm_eos_repr(batch_size)
         with torch.no_grad():
             self.backward_lstm(batched.data, batched.batch_sizes)
 
-    def call_char_cnn(self, inputs: PackedSequence) -> PackedSequence:
+    def exec_char_cnn(self, inputs: PackedSequence) -> PackedSequence:
         """
         Char CNN.
         """
         output_data = self.char_cnn(inputs.data)
         return PackedSequence(output_data, inputs.batch_sizes)
 
-    def call_word_embedding(self, inputs: PackedSequence) -> PackedSequence:
+    def exec_word_embedding(self, inputs: PackedSequence) -> PackedSequence:
         """
         Word embedding.
         """
         output_data = self.word_embedding(inputs.data)
         return PackedSequence(output_data, inputs.batch_sizes)
 
-    def call_forward_lstm(
+    def exec_forward_lstm(
             self,
             inputs: PackedSequence,
-            bos_eos: bool = True,
     ) -> List[PackedSequence]:
         """
         Forward LSTM.
         """
-        if bos_eos:
+        if self.exec_managed_lstm_bos_eos:
             max_batch_size = int(inputs.batch_sizes.data[0])
             # BOS.
-            self.call_forward_lstm_bos(max_batch_size)
+            self.exec_forward_lstm_bos(max_batch_size)
 
         # Feed inputs.
         outputs, _ = self.forward_lstm(inputs.data, inputs.batch_sizes)
 
-        if bos_eos:
+        if self.exec_managed_lstm_bos_eos:
             # EOS.
-            self.call_forward_lstm_eos(max_batch_size)
+            self.exec_forward_lstm_eos(max_batch_size)
 
         # To list of `PackedSequence`.
         return [PackedSequence(output, inputs.batch_sizes) for output in outputs]
 
-    def call_backward_lstm(
+    def exec_backward_lstm(
             self,
             inputs: PackedSequence,
-            bos_eos: bool = True,
     ) -> List[PackedSequence]:
         """
         Backward LSTM.
         """
-        if bos_eos:
+        if self.exec_managed_lstm_bos_eos:
             max_batch_size = int(inputs.batch_sizes.data[0])
             # EOS.
-            self.call_backward_lstm_eos(max_batch_size)
+            self.exec_backward_lstm_eos(max_batch_size)
 
         # Feed inputs.
         outputs, _ = self.backward_lstm(inputs.data, inputs.batch_sizes)
 
-        if bos_eos:
+        if self.exec_managed_lstm_bos_eos:
             # BOS.
-            self.call_backward_lstm_bos(max_batch_size)
+            self.exec_backward_lstm_bos(max_batch_size)
 
         # To list of `PackedSequence`.
         return [PackedSequence(output, inputs.batch_sizes) for output in outputs]
 
-    def call_bilstm(
+    def exec_bilstm(
             self,
             inputs: PackedSequence,
-            bos_eos: bool = True,
     ) -> List[Tuple[PackedSequence, PackedSequence]]:
         """
         BiLSTM.
         """
-        forward_seqs = self.call_forward_lstm(inputs, bos_eos)
-        backward_seqs = self.call_backward_lstm(inputs, bos_eos)
+        forward_seqs = self.exec_forward_lstm(inputs)
+        backward_seqs = self.exec_backward_lstm(inputs)
 
         return list(zip(forward_seqs, backward_seqs))
 
@@ -419,7 +424,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         combined.extend(bilstm_packed)
         return combined
 
-    def call_scalar_mix(self, packed_sequences: List[PackedSequence]) -> List[PackedSequence]:
+    def exec_scalar_mix(self, packed_sequences: List[PackedSequence]) -> List[PackedSequence]:
         """
         Scalar Mix.
         """
@@ -431,38 +436,58 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             reprs.append(PackedSequence(mixed, packed_sequences[0].batch_sizes))
         return reprs
 
+    def exec_bilstm_and_scalar_mix(
+            self,
+            token_repr: PackedSequence,
+    ) -> List[PackedSequence]:
+        """
+        Common combination.
+        """
+        # BiLSTM.
+        bilstm_repr = self.exec_bilstm(token_repr)
+        # Scalar Mix.
+        conbimed_repr = self.combine_char_cnn_and_bilstm_outputs(
+                token_repr,
+                self.concat_packed_sequences(bilstm_repr),
+        )
+        mixed_reprs = self.exec_scalar_mix(conbimed_repr)
+        return mixed_reprs
+
     def pack_inputs(self, inputs: torch.Tensor) -> PackedSequence:
         return utils.pack_inputs(inputs)
 
     def unpack_outputs(
             self,
             inputs: PackedSequence,
-            skip_mask: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        return utils.unpack_outputs(inputs, skip_mask)
+        return utils.unpack_outputs(inputs)
 
-    def _call_bilstm_and_scalar_mix(
+    def unpack_outputs_skip_mask(
             self,
-            token_repr: PackedSequence,
-            bos_eos: bool,
-    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
-        # BiLSTM.
-        bilstm_repr = self.call_bilstm(token_repr, bos_eos)
-        # Scalar Mix.
-        conbimed_repr = self.combine_char_cnn_and_bilstm_outputs(
-                token_repr,
-                self.concat_packed_sequences(bilstm_repr),
-        )
-        mixed_reprs = self.call_scalar_mix(conbimed_repr)
+            inputs: PackedSequence,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return utils.unpack_outputs(inputs, skip_mask=True)
 
-        # Unpack.
+    def unpack_mixed_reprs(
+            self,
+            mixed_reprs: List[PackedSequence],
+    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        """
+        Unpack the outputs of scalar mixtures.
+        """
         first_mixed_repr_unpacked, mask = self.unpack_outputs(mixed_reprs[0])
-        elmo_representations = [first_mixed_repr_unpacked]
+        unpacks = [first_mixed_repr_unpacked]
         for mixed_repr in mixed_reprs[1:]:
-            mixed_repr_unpacked, _ = self.unpack_outputs(mixed_repr, skip_mask=True)
-            elmo_representations.append(mixed_repr_unpacked)
+            mixed_repr_unpacked, _ = self.unpack_outputs_skip_mask(mixed_repr)
+            unpacks.append(mixed_repr_unpacked)
+        return unpacks, mask
 
-        return {'elmo_representations': elmo_representations, 'mask': mask}
+    def to_allennlp_elmo_output_format(
+            self,
+            unpacks: List[torch.Tensor],
+            mask: torch.Tensor,
+    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
+        return {'elmo_representations': unpacks, 'mask': mask}
 
     def forward(self):  # type: ignore
         raise NotImplementedError()
@@ -477,7 +502,7 @@ class FastElmo(FastElmoBase):
             **kwargs: Any,
     ) -> None:
         _raise_if_kwargs_is_invalid(
-                self.SCALAR_MIX_PARAMS | {
+                self.COMMON_PARAMS | {
                         'char_cnn_requires_grad',
                         'forward_lstm_requires_grad',
                         'backward_lstm_requires_grad',
@@ -487,7 +512,6 @@ class FastElmo(FastElmoBase):
     def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
-            bos_eos: bool = True,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         """
         The default workflow (same as AllenNLP).
@@ -495,8 +519,10 @@ class FastElmo(FastElmoBase):
         `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
         """
         packed_inputs = self.pack_inputs(inputs)
-        token_repr = self.call_char_cnn(packed_inputs)
-        return self._call_bilstm_and_scalar_mix(token_repr, bos_eos)
+        token_repr = self.exec_char_cnn(packed_inputs)
+        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
+        unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+        return self.to_allennlp_elmo_output_format(unpacks, mask)
 
 
 class FastElmoWordEmbedding(FastElmoBase):
@@ -508,7 +534,7 @@ class FastElmoWordEmbedding(FastElmoBase):
             **kwargs: Any,
     ) -> None:
         _raise_if_kwargs_is_invalid(
-                self.SCALAR_MIX_PARAMS | {
+                self.COMMON_PARAMS | {
                         'word_embedding_weight_file',
                         'word_embedding_requires_grad',
                         'forward_lstm_requires_grad',
@@ -522,11 +548,12 @@ class FastElmoWordEmbedding(FastElmoBase):
     def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
-            bos_eos: bool = True,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         """
         `inputs` of shape `(batch_size, max_timesteps)
         """
         packed_inputs = self.pack_inputs(inputs)
-        token_repr = self.call_word_embedding(packed_inputs)
-        return self._call_bilstm_and_scalar_mix(token_repr, bos_eos)
+        token_repr = self.exec_word_embedding(packed_inputs)
+        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
+        unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+        return self.to_allennlp_elmo_output_format(unpacks, mask)

@@ -1,5 +1,6 @@
 from os.path import dirname, join
 
+import torch
 from allennlp.modules.elmo import batch_to_ids
 import numpy as np
 
@@ -63,13 +64,13 @@ def test_cache_char_cnn_vocab(tmpdir):
             disable_scalar_mix=True,
     )
 
-    ebd_repr = fast_word_ebd.call_word_embedding(
+    ebd_repr = fast_word_ebd.exec_word_embedding(
             fast_word_ebd.pack_inputs(
                     utils.batch_to_word_ids(
                             [['ELMo', 'helps', '!!!UNK!!!']],
                             utils.load_and_build_vocab2id(vocab_path.realpath()),
                     )))
-    char_cnn_repr = fast_char_cnn.call_char_cnn(
+    char_cnn_repr = fast_char_cnn.exec_char_cnn(
             fast_char_cnn.pack_inputs(
                     utils.batch_to_char_ids(
                             [['ELMo', 'helps', '<UNK>']],
@@ -81,3 +82,14 @@ def test_cache_char_cnn_vocab(tmpdir):
             char_cnn_repr.data.numpy(),
     )
     np.testing.assert_array_equal(ebd_repr.batch_sizes.numpy(), char_cnn_repr.batch_sizes.numpy())
+
+
+def test_sort_batch_by_length():
+    for _ in range(100):
+        batch = torch.randn(20, 40)
+        lengths = torch.randint(0, 41, (20,), dtype=torch.long)
+        sorted_batch, restoration_index = utils.sort_batch_by_length(batch, lengths)
+        np.testing.assert_array_equal(
+                sorted_batch.index_select(0, restoration_index),
+                batch,
+        )

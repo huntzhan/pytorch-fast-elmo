@@ -351,7 +351,8 @@ def test_fast_elmo_with_allennlp_do_layer_norm():
     )
 
     # And disable the mock BOS/EOS actions in FastElmo.
-    fast_out_2 = fast(character_ids_with_bos_eos, bos_eos=False)
+    fast.exec_managed_lstm_bos_eos = False
+    fast_out_2 = fast(character_ids_with_bos_eos)
     fast_mixed_repr_2, _ = remove_sentence_boundaries(
             fast_out_2['elmo_representations'][0],
             fast_out_2['mask'],
