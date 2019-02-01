@@ -91,10 +91,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             disable_word_embedding: bool = True,
             word_embedding_weight_file: Optional[str] = None,
             word_embedding_requires_grad: bool = False,
-            # The forward LSTM.
+            # The Forward LSTM.
             disable_forward_lstm: bool = False,
             forward_lstm_requires_grad: bool = False,
-            # The backward LSTM.
+            # The Backward LSTM.
             disable_backward_lstm: bool = False,
             backward_lstm_requires_grad: bool = False,
             # Provide the BOS/EOS representations of shape `(projection_dim,)`
@@ -518,10 +518,18 @@ class FastElmo(FastElmoBase):
 
         `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
         """
+        if self.exec_sort_batch:
+            inputs, restoration_index = utils.sort_batch_by_length(inputs)
+
         packed_inputs = self.pack_inputs(inputs)
         token_repr = self.exec_char_cnn(packed_inputs)
         mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
         unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+
+        if self.exec_sort_batch:
+            unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
+            mask = mask.index_select(0, restoration_index)
+
         return self.to_allennlp_elmo_output_format(unpacks, mask)
 
 
@@ -552,8 +560,16 @@ class FastElmoWordEmbedding(FastElmoBase):
         """
         `inputs` of shape `(batch_size, max_timesteps)
         """
+        if self.exec_sort_batch:
+            inputs, restoration_index = utils.sort_batch_by_length(inputs)
+
         packed_inputs = self.pack_inputs(inputs)
         token_repr = self.exec_word_embedding(packed_inputs)
         mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
         unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+
+        if self.exec_sort_batch:
+            unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
+            mask = mask.index_select(0, restoration_index)
+
         return self.to_allennlp_elmo_output_format(unpacks, mask)

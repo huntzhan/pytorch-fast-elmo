@@ -88,7 +88,10 @@ def test_sort_batch_by_length():
     for _ in range(100):
         batch = torch.randn(20, 40)
         lengths = torch.randint(0, 41, (20,), dtype=torch.long)
-        sorted_batch, restoration_index = utils.sort_batch_by_length(batch, lengths)
+        mask = utils.generate_mask_from_lengths(20, 40, lengths)
+        batch[mask != 1] = 0
+
+        sorted_batch, restoration_index = utils.sort_batch_by_length(batch)
         np.testing.assert_array_equal(
                 sorted_batch.index_select(0, restoration_index),
                 batch,

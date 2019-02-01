@@ -34,17 +34,34 @@ def load_and_build_vocab2id(vocab_txt: str) -> Dict[str, int]:
     return build_vocab2id(load_vocab(vocab_txt))
 
 
+def get_lengths_of_zero_padded_batch(inputs: torch.Tensor) -> torch.Tensor:
+    if inputs.dim() == 2:
+        lengths = (inputs > 0).long().sum(dim=-1)
+    elif inputs.dim() == 3:
+        lengths = ((inputs > 0).long().sum(dim=-1) > 0).long().sum(dim=-1)
+    else:
+        raise ValueError("inputs should be 2D or 3D.")
+
+    return lengths
+
+
 def pack_inputs(inputs: torch.Tensor) -> PackedSequence:
     """
     Pack inputs of shape `(batch_size, timesteps, x)` or `(batch_size, timesteps)`.
     Padding value should be 0.
     """
-    if inputs.dim() == 2:
-        lengths = (inputs > 0).long().sum(dim=-1)
-    elif inputs.dim() == 3:
-        lengths = ((inputs > 0).long().sum(dim=-1) > 0).long().sum(dim=-1)
-
+    lengths = get_lengths_of_zero_padded_batch(inputs)
     return pack_padded_sequence(inputs, lengths, batch_first=True)
+
+
+def generate_mask_from_lengths(
+        batch_size: int,
+        max_timesteps: int,
+        lengths: torch.Tensor,
+) -> torch.Tensor:
+    ones = lengths.new_ones(batch_size, max_timesteps, dtype=torch.long)
+    range_tensor = ones.cumsum(dim=-1)
+    return (lengths.unsqueeze(1) >= range_tensor).long()
 
 
 def unpack_outputs(
@@ -57,12 +74,14 @@ def unpack_outputs(
     tensor, lengths = pad_packed_sequence(inputs, batch_first=True)
     if skip_mask:
         return tensor, None
+
     if tensor.is_cuda:
         lengths = lengths.cuda()
-
-    ones = lengths.new_ones(tensor.shape[0], tensor.shape[1], dtype=torch.long)
-    range_tensor = ones.cumsum(dim=-1)
-    mask = (lengths.unsqueeze(1) >= range_tensor).long()
+    mask = generate_mask_from_lengths(
+            tensor.shape[0],
+            tensor.shape[1],
+            lengths,
+    )
     return tensor, mask
 
 
@@ -282,18 +301,16 @@ def cache_char_cnn_vocab(
         dset[...] = embedding_weight
 
 
-def sort_batch_by_length(
-        batch: torch.Tensor,
-        lengths: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Similar to AllenNLP.
 
-    `batch` of shape `(batch_size, max_timesteps, *)`
+    `batch` of shape `(batch_size, max_timesteps, *)` should be zero padded.
     `sequence_lengths` of shape `(batch_size,)`
 
     Returns (sorted_batch, restoration_index)
     """
+    lengths = get_lengths_of_zero_padded_batch(batch)
     _, permutation_index = lengths.sort(0, descending=True)
     sorted_batch = batch.index_select(0, permutation_index)
     _, restoration_index = permutation_index.sort(0, descending=False)
