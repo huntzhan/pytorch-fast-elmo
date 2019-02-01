@@ -95,10 +95,6 @@ def test_elmo_character_encoder_with_allennlp():
             'char_conv_3.weight',
             'char_conv_4.bias',
             'char_conv_4.weight',
-            '_highways._layers.0.bias',
-            '_highways._layers.0.weight',
-            '_highways._layers.1.bias',
-            '_highways._layers.1.weight',
             '_projection.bias',
             '_projection.weight',
     ]
@@ -114,22 +110,44 @@ def test_elmo_character_encoder_with_allennlp():
             'char_conv_3.weight',
             'char_conv_4.bias',
             'char_conv_4.weight',
+            'output_proj.bias',
+            'output_proj.weight',
+    ]
+    allennlp_parameters_diff = [
+            '_highways._layers.0.bias',
+            '_highways._layers.0.weight',
+            '_highways._layers.1.bias',
+            '_highways._layers.1.weight',
+    ]
+    embedder_parameters_diff = [
             'highway.layers_0.bias',
             'highway.layers_0.weight',
             'highway.layers_1.bias',
             'highway.layers_1.weight',
-            'output_proj.bias',
-            'output_proj.weight',
     ]
     assert len(allennlp_parameters) == len(embedder_parameters)
+    assert len(allennlp_parameters_diff) == len(embedder_parameters_diff)
 
     allennlp_embedder_named_parameters = dict(allennlp_embedder.named_parameters())
+    # Same.
     for allennlp_param, embedder_param in zip(allennlp_parameters, embedder_parameters):
         allennlp_w = allennlp_embedder_named_parameters[allennlp_param].data
         embedder_w = embedder.named_parameters()[embedder_param].data
 
         np.testing.assert_array_equal(embedder_w.numpy(), allennlp_w.numpy())
         assert embedder_w.dtype == allennlp_w.dtype
+    # Diff on highway.
+    for allennlp_param, embedder_param in zip(allennlp_parameters_diff, embedder_parameters_diff):
+        allennlp_w = allennlp_embedder_named_parameters[allennlp_param].data
+        embedder_w = embedder.named_parameters()[embedder_param].data
+
+        assert embedder_w.dtype == allennlp_w.dtype
+        np.testing.assert_raises(
+                AssertionError,
+                np.testing.assert_array_equal,
+                embedder_w.numpy(),
+                allennlp_w.numpy(),
+        )
 
     sentences = [
             ['ELMo', 'helps', 'disambiguate', 'ELMo', 'from', 'Elmo', '.'],

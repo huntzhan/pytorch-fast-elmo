@@ -12,13 +12,13 @@ Highway::Highway(
     activation_(activation) {
   // Build layers.
   for (int64_t layer_idx = 0; layer_idx < num_layers; ++layer_idx) {
-    // Ouptut: concat(H, C).
+    // Ouptut: concat(H, T).
     auto layer = torch::nn::Linear(input_dim_, input_dim_ * 2);
     // Initially biased towards carry behavior.
     layer->bias
         .detach()
         .narrow(0, input_dim_, input_dim_)
-        .fill_(1);
+        .fill_(-1);
     // Note: Libtorch 1.0 doesn't support module list,
     //       so we need to register all layers explictly.
     register_module(
@@ -35,11 +35,11 @@ torch::Tensor Highway::forward(torch::Tensor inputs) {
     auto proj_inputs = layer->forward(cur_inputs);
 
     auto transform = proj_inputs.narrow(-1, 0, input_dim_);
-    auto carry_gate = proj_inputs.narrow(-1, input_dim_, input_dim_);
+    auto transform_gate = proj_inputs.narrow(-1, input_dim_, input_dim_);
 
     transform = activation_(transform);
-    carry_gate = torch::sigmoid(carry_gate);
-    cur_inputs = (1 - carry_gate) * transform + carry_gate * cur_inputs;
+    transform_gate = torch::sigmoid(transform_gate);
+    cur_inputs = transform_gate * transform + (1 - transform_gate) * cur_inputs;
   }
   return cur_inputs;
 }

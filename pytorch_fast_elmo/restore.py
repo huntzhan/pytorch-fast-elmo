@@ -108,13 +108,16 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
             self.named_parameters[bias_name].data.copy_(torch.FloatTensor(bias))
 
     def _load_highway(self) -> None:
+        """
+        Note: `W_carry` and `b_carry` in bilm-tf are weights of transform gate.
+        """
         total_out_channels = sum(out_channels for _, out_channels in self.filters)
 
         for layer_idx in range(self.num_highway_layers):
             with h5py.File(self.weight_file, 'r') as fin:
                 w_transform = np.transpose(fin[f'CNN_high_{layer_idx}']['W_transform'][...])
-                w_carry_gate = -1.0 * np.transpose(fin[f'CNN_high_{layer_idx}']['W_carry'][...])
-                weight = np.concatenate([w_transform, w_carry_gate], axis=0)
+                w_transform_gate = np.transpose(fin[f'CNN_high_{layer_idx}']['W_carry'][...])
+                weight = np.concatenate([w_transform, w_transform_gate], axis=0)
 
                 if weight.shape != (total_out_channels * 2, total_out_channels):
                     raise ValueError("Invalid weight file")
@@ -123,8 +126,8 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
                 self.named_parameters[weight_name].data.copy_(torch.FloatTensor(weight))
 
                 b_transform = fin[f'CNN_high_{layer_idx}']['b_transform'][...]
-                b_carry_gate = -1.0 * fin[f'CNN_high_{layer_idx}']['b_carry'][...]
-                bias = np.concatenate([b_transform, b_carry_gate], axis=0)
+                b_transform_gate = fin[f'CNN_high_{layer_idx}']['b_carry'][...]
+                bias = np.concatenate([b_transform, b_transform_gate], axis=0)
 
                 if bias.shape != (total_out_channels * 2,):
                     raise ValueError("Invalid weight file")
