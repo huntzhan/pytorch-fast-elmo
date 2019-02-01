@@ -121,6 +121,12 @@ def word_to_char_ids(word: str) -> List[int]:
     return [char_id + 1 for char_id in word.encode('utf-8', 'ignore')]
 
 
+_WORD_TO_CHAR_IDS_EXCEPTION = {
+        '<S>': make_bos,
+        '</S>': make_eos,
+}
+
+
 def batch_to_char_ids(
         batch: List[List[str]],
         max_characters_per_token: int = ElmoCharacterIdsConst.MAX_WORD_LENGTH,
@@ -130,7 +136,8 @@ def batch_to_char_ids(
 
     Note:
     1. `batch` should have been sorted by length in reversed order.
-    2. BOS/EOS, if you provided in batch, will be treated as normal words.
+    2. BOS/EOS will be treated specially.
+    3. UNK will be treated as normal string, same as bilm-tf.
 
     Return tensor of shape `(batch_size, max_timesteps, max_characters_per_token)`.
     """
@@ -139,14 +146,20 @@ def batch_to_char_ids(
 
     rows = []
     for words in batch:
-        row = [
-                # of shape `(max_characters_per_token,)`
-                torch.LongTensor(
-                        make_padded_char_ids(
-                                word_to_char_ids(word),
-                                max_characters_per_token,
-                        )) for word in words
-        ]
+        row = []
+        for word in words:
+            special_gen = _WORD_TO_CHAR_IDS_EXCEPTION.get(word)
+            if special_gen is None:
+                char_ids = make_padded_char_ids(
+                        word_to_char_ids(word),
+                        max_characters_per_token,
+                )
+            else:
+                char_ids = special_gen(max_characters_per_token)
+
+            # of shape `(max_characters_per_token,)`
+            row.append(torch.LongTensor(char_ids))
+
         # Add padding.
         row.extend([zeros] * (max_timesteps - len(row)))
         # Stack to shape `(max_timesteps, max_characters_per_token)`
