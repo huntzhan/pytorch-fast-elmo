@@ -1,4 +1,5 @@
-# pylint: disable=no-self-use
+# pylint: skip-file
+import cProfile, pstats, io
 
 import fire
 from pytorch_fast_elmo import utils, profile
@@ -39,7 +40,13 @@ class Main:
             sent_min=1,
             sent_max=30,
             random_seed=10000,
+            profiler=False,
+            profiler_dump=None,
     ):
+        if profiler:
+            pr = cProfile.Profile()
+            pr.enable()
+
         profile.profile_full_elmo(
                 mode,
                 options_file,
@@ -53,6 +60,14 @@ class Main:
                 sent_max,
                 random_seed,
         )
+
+        if profiler:
+            pr.disable()
+            s = io.StringIO()
+            ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+            ps.print_stats()
+            with open(profiler_dump, 'w') as fout:
+                fout.write(s.getvalue())
 
 
 def main():  # type: ignore
