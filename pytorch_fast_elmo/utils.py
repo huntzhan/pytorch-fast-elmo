@@ -1,4 +1,4 @@
-from typing import List, Tuple, Iterable, Dict
+from typing import List, Tuple, Iterable, Dict, Optional
 
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
@@ -45,12 +45,16 @@ def get_lengths_of_zero_padded_batch(inputs: torch.Tensor) -> torch.Tensor:
     return lengths
 
 
-def pack_inputs(inputs: torch.Tensor) -> PackedSequence:
+def pack_inputs(
+        inputs: torch.Tensor,
+        lengths: Optional[torch.Tensor] = None,
+) -> PackedSequence:
     """
     Pack inputs of shape `(batch_size, timesteps, x)` or `(batch_size, timesteps)`.
     Padding value should be 0.
     """
-    lengths = get_lengths_of_zero_padded_batch(inputs)
+    if lengths is None:
+        lengths = get_lengths_of_zero_padded_batch(inputs)
     return pack_padded_sequence(inputs, lengths, batch_first=True)
 
 
@@ -64,25 +68,24 @@ def generate_mask_from_lengths(
     return (lengths.unsqueeze(1) >= range_tensor).long()
 
 
-def unpack_outputs(
-        inputs: PackedSequence,
-        skip_mask: bool = False,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def unpack_outputs(inputs: PackedSequence,) -> torch.Tensor:
     """
     Unpack the final result and return `(tensor, mask)`.
     """
-    tensor, lengths = pad_packed_sequence(inputs, batch_first=True)
-    if skip_mask:
-        return tensor, None
+    tensor, _ = pad_packed_sequence(inputs, batch_first=True)
+    return tensor
 
-    if tensor.is_cuda:
-        lengths = lengths.cuda()
-    mask = generate_mask_from_lengths(
-            tensor.shape[0],
-            tensor.shape[1],
-            lengths,
-    )
-    return tensor, mask
+    # if skip_mask:
+    #     return tensor, None
+
+    # if lengths is None:
+    #     lengths = get_lengths_of_zero_padded_batch(tensor)
+    # mask = generate_mask_from_lengths(
+    #         tensor.shape[0],
+    #         tensor.shape[1],
+    #         lengths,
+    # )
+    # return tensor, mask
 
 
 class ElmoCharacterIdsConst:
@@ -265,10 +268,7 @@ def cache_char_cnn_vocab(
         inputs = pack_inputs(char_ids)
         output_data = char_cnn(inputs.data)
         # (1, batch_size, output_dim)
-        char_reprs, _ = unpack_outputs(
-                PackedSequence(output_data, inputs.batch_sizes),
-                skip_mask=True,
-        )
+        char_reprs = unpack_outputs(PackedSequence(output_data, inputs.batch_sizes))
         # (batch_size, output_dim)
         cached.append(char_reprs.squeeze(0))
 
@@ -299,7 +299,10 @@ def cache_char_cnn_vocab(
         dset[...] = embedding_weight
 
 
-def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def sort_batch_by_length(
+        batch: torch.Tensor,
+        lengths: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Similar to AllenNLP.
 
@@ -308,7 +311,8 @@ def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tenso
 
     Returns (sorted_batch, restoration_index)
     """
-    lengths = get_lengths_of_zero_padded_batch(batch)
+    if lengths is None:
+        lengths = get_lengths_of_zero_padded_batch(batch)
     _, permutation_index = lengths.sort(0, descending=True)
     sorted_batch = batch.index_select(0, permutation_index)
     _, restoration_index = permutation_index.sort(0, descending=False)

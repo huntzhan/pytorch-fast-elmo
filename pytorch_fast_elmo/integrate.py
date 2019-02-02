@@ -476,34 +476,27 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         mixed_reprs = self.exec_scalar_mix(conbimed_repr)
         return mixed_reprs
 
-    def pack_inputs(self, inputs: torch.Tensor) -> PackedSequence:
-        return utils.pack_inputs(inputs)
+    def pack_inputs(
+            self,
+            inputs: torch.Tensor,
+            lengths: Optional[torch.Tensor] = None,
+    ) -> PackedSequence:
+        return utils.pack_inputs(inputs, lengths=lengths)
 
     def unpack_outputs(
             self,
             inputs: PackedSequence,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         return utils.unpack_outputs(inputs)
-
-    def unpack_outputs_skip_mask(
-            self,
-            inputs: PackedSequence,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        return utils.unpack_outputs(inputs, skip_mask=True)
 
     def unpack_mixed_reprs(
             self,
             mixed_reprs: List[PackedSequence],
-    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+    ) -> List[torch.Tensor]:
         """
         Unpack the outputs of scalar mixtures.
         """
-        first_mixed_repr_unpacked, mask = self.unpack_outputs(mixed_reprs[0])
-        unpacks = [first_mixed_repr_unpacked]
-        for mixed_repr in mixed_reprs[1:]:
-            mixed_repr_unpacked, _ = self.unpack_outputs_skip_mask(mixed_repr)
-            unpacks.append(mixed_repr_unpacked)
-        return unpacks, mask
+        return [self.unpack_outputs(mixed_repr) for mixed_repr in mixed_reprs]
 
     def to_allennlp_elmo_output_format(
             self,
@@ -511,6 +504,43 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             mask: torch.Tensor,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         return {'elmo_representations': unpacks, 'mask': mask}
+
+    def preprocess_inputs(
+            self,
+            inputs: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        lengths = utils.get_lengths_of_zero_padded_batch(inputs)
+        original_lengths = lengths
+        restoration_index: Optional[torch.Tensor] = None
+
+        if self.exec_sort_batch:
+            inputs, permutation_index, restoration_index = \
+                    utils.sort_batch_by_length(inputs, lengths)
+            lengths = lengths.index_select(0, permutation_index)
+            self.exec_bilstm_permutate_states(permutation_index)
+
+        return inputs, lengths, original_lengths, restoration_index
+
+    def postprocess_outputs(
+            self,
+            unpacked_mixed_reprs: List[torch.Tensor],
+            restoration_index: Optional[torch.Tensor],
+            inputs: torch.Tensor,
+            original_lengths: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask = utils.generate_mask_from_lengths(
+                inputs.shape[0],
+                inputs.shape[1],
+                original_lengths,
+        )
+        if self.exec_sort_batch:
+            assert restoration_index is not None
+            unpacked_mixed_reprs = [
+                    tensor.index_select(0, restoration_index) for tensor in unpacked_mixed_reprs
+            ]
+            self.exec_bilstm_permutate_states(restoration_index)
+
+        return unpacked_mixed_reprs, mask
 
     def forward(self):  # type: ignore
         raise NotImplementedError()
@@ -541,21 +571,21 @@ class FastElmo(FastElmoBase):
 
         `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
         """
-        if self.exec_sort_batch:
-            inputs, permutation_index, restoration_index = utils.sort_batch_by_length(inputs)
-            self.exec_bilstm_permutate_states(permutation_index)
+        inputs, lengths, original_lengths, restoration_index = \
+                self.preprocess_inputs(inputs)
 
-        packed_inputs = self.pack_inputs(inputs)
+        packed_inputs = self.pack_inputs(inputs, lengths)
         token_repr = self.exec_char_cnn(packed_inputs)
         mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
-        unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+        unpacked_mixed_reprs = self.unpack_mixed_reprs(mixed_reprs)
 
-        if self.exec_sort_batch:
-            self.exec_bilstm_permutate_states(restoration_index)
-            unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
-            mask = mask.index_select(0, restoration_index)
-
-        return self.to_allennlp_elmo_output_format(unpacks, mask)
+        unpacked_mixed_reprs, mask = self.postprocess_outputs(
+                unpacked_mixed_reprs,
+                restoration_index,
+                inputs,
+                original_lengths,
+        )
+        return self.to_allennlp_elmo_output_format(unpacked_mixed_reprs, mask)
 
 
 class FastElmoWordEmbedding(FastElmoBase):
@@ -585,18 +615,18 @@ class FastElmoWordEmbedding(FastElmoBase):
         """
         `inputs` of shape `(batch_size, max_timesteps)
         """
-        if self.exec_sort_batch:
-            inputs, permutation_index, restoration_index = utils.sort_batch_by_length(inputs)
-            self.exec_bilstm_permutate_states(permutation_index)
+        inputs, lengths, original_lengths, restoration_index = \
+                self.preprocess_inputs(inputs)
 
-        packed_inputs = self.pack_inputs(inputs)
+        packed_inputs = self.pack_inputs(inputs, lengths)
         token_repr = self.exec_word_embedding(packed_inputs)
         mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
-        unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
+        unpacked_mixed_reprs = self.unpack_mixed_reprs(mixed_reprs)
 
-        if self.exec_sort_batch:
-            self.exec_bilstm_permutate_states(restoration_index)
-            unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
-            mask = mask.index_select(0, restoration_index)
-
-        return self.to_allennlp_elmo_output_format(unpacks, mask)
+        unpacked_mixed_reprs, mask = self.postprocess_outputs(
+                unpacked_mixed_reprs,
+                restoration_index,
+                inputs,
+                original_lengths,
+        )
+        return self.to_allennlp_elmo_output_format(unpacked_mixed_reprs, mask)
