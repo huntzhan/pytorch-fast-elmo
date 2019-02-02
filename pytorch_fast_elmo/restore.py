@@ -161,7 +161,7 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
     def restore(
             self,
             requires_grad: bool = False,
-    ) -> Tuple[torch.nn.Embedding, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns (embedding, lstm_bos, lstm_eos)
         """
@@ -175,16 +175,16 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
 
             # Since bilm-tf doesn't include padding,
             # we need to prepend a padding row in index 0.
-            ebd = torch.nn.Embedding(
-                    ebd_weight.shape[0] + 1,
-                    ebd_weight.shape[1],
-                    padding_idx=0,
+            ebd = torch.zeros(
+                    (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                    dtype=torch.float,
             )
-            ebd.weight.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
-            ebd.weight.requires_grad = requires_grad
 
-            lstm_bos_repr = ebd.weight.data[1]
-            lstm_eos_repr = ebd.weight.data[2]
+            ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
+            ebd.requires_grad = requires_grad
+
+            lstm_bos_repr = ebd.data[1]
+            lstm_eos_repr = ebd.data[2]
 
             return ebd, lstm_bos_repr, lstm_eos_repr
 

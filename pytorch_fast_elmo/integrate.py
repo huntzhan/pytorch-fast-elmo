@@ -128,7 +128,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         )
         if not disable_word_embedding:
             # Not a cpp extension.
-            self.word_embedding, lstm_bos_repr, lstm_eos_repr = \
+            self.word_embedding_weight, lstm_bos_repr, lstm_eos_repr = \
                     self.word_embedding_restorer.restore(requires_grad=word_embedding_requires_grad)
 
         # LSTM.
@@ -193,6 +193,16 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                     only_trainable=True,
             )
 
+        if not self.disable_word_embedding \
+                and self.word_embedding_weight.requires_grad:
+            word_ebd_param_name = 'word_embedding'
+            if override and hasattr(self, word_ebd_param_name):
+                delattr(self, word_ebd_param_name)
+            self.register_parameter(
+                    word_ebd_param_name,
+                    torch.nn.Parameter(self.word_embedding_weight, requires_grad=True),
+            )
+
         if not self.disable_forward_lstm:
             _bind_cpp_extension_parameters(
                     self,
@@ -225,6 +235,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not self.disable_char_cnn:
             self.char_cnn.cuda()
 
+        if not self.disable_word_embedding:
+            self.word_embedding_weight = self.word_embedding_weight.cuda()
+
         if not self.disable_forward_lstm:
             self.forward_lstm.cuda()
         if not self.disable_backward_lstm:
@@ -244,6 +257,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         # Move all cpp exntensions to CPU.
         if not self.disable_char_cnn:
             self.char_cnn.cpu()
+
+        if not self.disable_word_embedding:
+            self.word_embedding_weight = self.word_embedding_weight.cpu()
 
         if not self.disable_forward_lstm:
             self.forward_lstm.cpu()
@@ -336,7 +352,11 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         """
         Word embedding.
         """
-        output_data = self.word_embedding(inputs.data)
+        output_data = torch.nn.functional.embedding(
+                inputs.data,
+                self.word_embedding_weight,
+                padding_idx=0,
+        )
         return PackedSequence(output_data, inputs.batch_sizes)
 
     def exec_forward_lstm(
