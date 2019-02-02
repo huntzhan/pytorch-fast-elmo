@@ -91,7 +91,7 @@ def test_sort_batch_by_length():
         mask = utils.generate_mask_from_lengths(20, 40, lengths)
         batch[mask != 1] = 0
 
-        sorted_batch, restoration_index = utils.sort_batch_by_length(batch)
+        sorted_batch, _, restoration_index = utils.sort_batch_by_length(batch)
         np.testing.assert_array_equal(
                 sorted_batch.index_select(0, restoration_index),
                 batch,

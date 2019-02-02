@@ -301,7 +301,7 @@ def cache_char_cnn_vocab(
         dset[...] = embedding_weight
 
 
-def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Similar to AllenNLP.
 
@@ -314,4 +314,4 @@ def sort_batch_by_length(batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tenso
     _, permutation_index = lengths.sort(0, descending=True)
     sorted_batch = batch.index_select(0, permutation_index)
     _, restoration_index = permutation_index.sort(0, descending=False)
-    return sorted_batch, restoration_index
+    return sorted_batch, permutation_index, restoration_index

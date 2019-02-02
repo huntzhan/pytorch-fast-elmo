@@ -3,6 +3,7 @@ from os.path import dirname, join
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
 import numpy as np
+import random
 
 from allennlp.data import Token, Vocabulary, Instance
 from allennlp.data.fields import TextField
@@ -281,6 +282,7 @@ def test_fast_elmo_with_allennlp():
     ]
 
     for sentences in [sentences_1, sentences_2] * 10:
+        random.shuffle(sentences)
         character_ids = _sentences_to_ids(sentences)
 
         fast_out = fast(character_ids)

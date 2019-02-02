@@ -315,6 +315,16 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         with torch.no_grad():
             self.backward_lstm(batched.data, batched.batch_sizes)
 
+    def exec_forward_lstm_permutate_states(self, index: torch.Tensor) -> None:
+        self.forward_lstm.permutate_states(index)
+
+    def exec_backward_lstm_permutate_states(self, index: torch.Tensor) -> None:
+        self.backward_lstm.permutate_states(index)
+
+    def exec_bilstm_permutate_states(self, index: torch.Tensor) -> None:
+        self.exec_forward_lstm_permutate_states(index)
+        self.exec_backward_lstm_permutate_states(index)
+
     def exec_char_cnn(self, inputs: PackedSequence) -> PackedSequence:
         """
         Char CNN.
@@ -512,7 +522,8 @@ class FastElmo(FastElmoBase):
         `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
         """
         if self.exec_sort_batch:
-            inputs, restoration_index = utils.sort_batch_by_length(inputs)
+            inputs, permutation_index, restoration_index = utils.sort_batch_by_length(inputs)
+            self.exec_bilstm_permutate_states(permutation_index)
 
         packed_inputs = self.pack_inputs(inputs)
         token_repr = self.exec_char_cnn(packed_inputs)
@@ -520,6 +531,7 @@ class FastElmo(FastElmoBase):
         unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
 
         if self.exec_sort_batch:
+            self.exec_bilstm_permutate_states(restoration_index)
             unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
             mask = mask.index_select(0, restoration_index)
 
@@ -554,7 +566,8 @@ class FastElmoWordEmbedding(FastElmoBase):
         `inputs` of shape `(batch_size, max_timesteps)
         """
         if self.exec_sort_batch:
-            inputs, restoration_index = utils.sort_batch_by_length(inputs)
+            inputs, permutation_index, restoration_index = utils.sort_batch_by_length(inputs)
+            self.exec_bilstm_permutate_states(permutation_index)
 
         packed_inputs = self.pack_inputs(inputs)
         token_repr = self.exec_word_embedding(packed_inputs)
@@ -562,6 +575,7 @@ class FastElmoWordEmbedding(FastElmoBase):
         unpacks, mask = self.unpack_mixed_reprs(mixed_reprs)
 
         if self.exec_sort_batch:
+            self.exec_bilstm_permutate_states(restoration_index)
             unpacks = [tensor.index_select(0, restoration_index) for tensor in unpacks]
             mask = mask.index_select(0, restoration_index)
 
