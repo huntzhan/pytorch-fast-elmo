@@ -241,35 +241,28 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         return super().cuda()
 
     def cpu(self):  # type: ignore
-        if self._get_lstm_device() >= 0:
-            raise RuntimeError('Going to GPU is a one-way ticket for now.')
-        else:
-            return self
+        # Move all cpp exntensions to CPU.
+        if not self.disable_char_cnn:
+            self.char_cnn.cpu()
 
-        # TODO: Investigate.
-        #
-        # # Move all cpp exntensions to CPU.
-        # if not self.disable_char_cnn:
-        #     self.char_cnn.cpu()
-        #
-        # if not self.disable_forward_lstm:
-        #     self.forward_lstm.cpu()
-        # if not self.disable_backward_lstm:
-        #     self.backward_lstm.cpu()
-        #
-        # if not self.disable_scalar_mix:
-        #     for scalar_mix in self.scalar_mixes:
-        #         scalar_mix.cpu()
-        #
-        # # Also, move BOS/EOS back to CPU.
-        # if not (self.disable_forward_lstm and self.disable_backward_lstm):
-        #     self.lstm_bos_repr = self.lstm_bos_repr.cpu()
-        #     self.lstm_eos_repr = self.lstm_eos_repr.cpu()
-        #
-        # # Override parameter bindings.
-        # self._bind_parameters(override=True)
-        #
-        # return super().cpu()
+        if not self.disable_forward_lstm:
+            self.forward_lstm.cpu()
+        if not self.disable_backward_lstm:
+            self.backward_lstm.cpu()
+
+        if not self.disable_scalar_mix:
+            for scalar_mix in self.scalar_mixes:
+                scalar_mix.cpu()
+
+        # Also, move BOS/EOS back to CPU.
+        if not (self.disable_forward_lstm and self.disable_backward_lstm):
+            self.lstm_bos_repr = self.lstm_bos_repr.cpu()
+            self.lstm_eos_repr = self.lstm_eos_repr.cpu()
+
+        # Override parameter bindings.
+        self._bind_parameters(override=True)
+
+        return super().cpu()
 
     def _get_lstm_device(self) -> int:
         cpp_ext = None
