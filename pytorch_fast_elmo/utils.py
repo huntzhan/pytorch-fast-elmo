@@ -75,18 +75,6 @@ def unpack_outputs(inputs: PackedSequence,) -> torch.Tensor:
     tensor, _ = pad_packed_sequence(inputs, batch_first=True)
     return tensor
 
-    # if skip_mask:
-    #     return tensor, None
-
-    # if lengths is None:
-    #     lengths = get_lengths_of_zero_padded_batch(tensor)
-    # mask = generate_mask_from_lengths(
-    #         tensor.shape[0],
-    #         tensor.shape[1],
-    #         lengths,
-    # )
-    # return tensor, mask
-
 
 class ElmoCharacterIdsConst:
     """

@@ -102,13 +102,10 @@ def profile_full_elmo(
 
         if cuda:
             char_ids = char_ids.cuda()
-            torch.cuda.synchronize()
 
         start = time.time()
         with torch.no_grad():
             module(char_ids)
-        if cuda:
-            torch.cuda.synchronize()
         end = time.time()
 
         durations.append(end - start)
