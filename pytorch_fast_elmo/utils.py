@@ -154,13 +154,12 @@ def batch_to_char_ids(
     From Allennlp.
 
     Note:
-    1. `batch` should have been sorted by length in reversed order.
-    2. BOS/EOS will be treated specially.
-    3. UNK will be treated as normal string, same as bilm-tf.
+    1. BOS/EOS will be treated specially.
+    2. UNK will be treated as normal string, same as bilm-tf.
 
     Return tensor of shape `(batch_size, max_timesteps, max_characters_per_token)`.
     """
-    max_timesteps = len(batch[0])
+    max_timesteps = max(len(row) for row in batch)
     zeros = torch.LongTensor([0] * max_characters_per_token)
 
     rows = []
@@ -192,12 +191,11 @@ def batch_to_word_ids(batch: List[List[str]], vocab2id: Dict[str, int]) -> torch
     """
     For word embedding.
 
-    1. `batch` should have been sorted by length in reversed order.
-    2. UNK will be mapped to 3 since we assume the vocab starts with `<S>, </S>, <UNK>`.
+    1. UNK will be mapped to 3 since we assume the vocab starts with `<S>, </S>, <UNK>`.
 
     Return tensor of shape `(batch_size, max_timesteps)`.
     """
-    max_timesteps = len(batch[0])
+    max_timesteps = max(len(row) for row in batch)
 
     rows = []
     for words in batch:
