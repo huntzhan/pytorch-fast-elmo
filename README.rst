@@ -85,7 +85,7 @@ Use ``FastElmoWordEmbedding`` if you have disabled ``char_cnn`` in ``bilm-tf``, 
 
 .. code-block:: python
 
-    from pytorch_fast_elmo import FastElmoWordEmbedding, load_and_build_vocab2id, batch_to_word_ids,
+    from pytorch_fast_elmo import FastElmoWordEmbedding, load_and_build_vocab2id, batch_to_word_ids
 
     options_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_options.json'
     weight_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5'

@@ -43,8 +43,10 @@ class Main:
             sent_max=30,
             random_seed=10000,
             profiler=False,
-            profiler_dump=None,
+            output_file=None,
     ):
+        sstream = io.StringIO()
+
         if profiler:
             pr = cProfile.Profile()
             pr.enable()
@@ -65,19 +67,22 @@ class Main:
                 random_seed,
         )
 
+        sstream.write(f'Finish {iteration_size} iterations.\n')
+        sstream.write(f'Mode: {mode}\n')
+        sstream.write(f'Duration Mean: {mean}\n')
+        sstream.write(f'Duration Median: {median}\n')
+        sstream.write(f'Duration Stdev: {stdev}\n\n')
+
         if profiler:
             pr.disable()
-            s = io.StringIO()
-            ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+            ps = pstats.Stats(pr, stream=sstream).sort_stats('cumulative')
             ps.print_stats()
-            with open(profiler_dump, 'w') as fout:
-                fout.write(f'Finish {iteration_size} iterations.\n')
-                fout.write(f'Mode: {mode}\n')
-                fout.write(f'Duration Mean: {mean}\n')
-                fout.write(f'Duration Median: {median}\n')
-                fout.write(f'Duration Stdev: {stdev}\n\n')
 
-                fout.write(s.getvalue())
+        if output_file:
+            with open(output_file, 'w') as fout:
+                fout.write(sstream.getvalue())
+        else:
+            print(sstream.getvalue())
 
 
 def main():  # type: ignore
