@@ -9,8 +9,8 @@ pytorch-fast-elmo
 .. image:: https://img.shields.io/travis/cnt-dev/pytorch-fast-elmo.svg
         :target: https://travis-ci.org/cnt-dev/pytorch-fast-elmo
 
-
-* Free software: MIT license
+.. image:: https://img.shields.io/badge/License-MIT-yellow.svg
+        :target: https://travis-ci.org/cnt-dev/pytorch-fast-elmo
 
 
 Introduction
@@ -57,7 +57,25 @@ Options:
 Usage
 -----
 
-TODO
+Install::
+
+    pip install pytorch-fast-elmo
+
+
+`FastElmo` should have the same behavior as AllenNLP's `ELMo`::
+
+    TODO
+
+
+`FastElmoWordEmbedding` could be used if you have disabled `char_cnn` in `bilm-tf`, or intend to cache the Char CNN representation as word embedding::
+
+    TODO
+
+
+We provided a CLI command to cache the Char CNN::
+
+    fast-elmo cache-char-cnn ./vocab.txt ./options.json ./lm_weights.hdf5 ./lm_ebd.hdf5
+
 
 Credits
 -------
