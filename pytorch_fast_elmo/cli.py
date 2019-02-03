@@ -33,7 +33,9 @@ class Main:
             options_file,
             weight_file,
             cuda=False,
+            cuda_synchronize=False,
             batch_size=32,
+            warmup_size=20,
             iteration_size=1000,
             word_min=1,
             word_max=20,
@@ -47,12 +49,14 @@ class Main:
             pr = cProfile.Profile()
             pr.enable()
 
-        profile.profile_full_elmo(
+        mean, median, stdev = profile.profile_full_elmo(
                 mode,
                 options_file,
                 weight_file,
                 cuda,
+                cuda_synchronize,
                 batch_size,
+                warmup_size,
                 iteration_size,
                 word_min,
                 word_max,
@@ -67,6 +71,12 @@ class Main:
             ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
             ps.print_stats()
             with open(profiler_dump, 'w') as fout:
+                fout.write(f'Finish {iteration_size} iterations.\n')
+                fout.write(f'Mode: {mode}\n')
+                fout.write(f'Duration Mean: {mean}\n')
+                fout.write(f'Duration Median: {median}\n')
+                fout.write(f'Duration Stdev: {stdev}\n\n')
+
                 fout.write(s.getvalue())
 
 

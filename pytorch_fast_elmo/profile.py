@@ -65,14 +65,16 @@ def profile_full_elmo(
         mode: str,
         options_file: str,
         weight_file: str,
-        cuda: bool = False,
-        batch_size: int = 32,
-        iteration_size: int = 1000,
-        word_min: int = 1,
-        word_max: int = 20,
-        sent_min: int = 1,
-        sent_max: int = 30,
-        random_seed: int = 10000,
+        cuda: bool,
+        cuda_synchronize: bool,
+        batch_size: int,
+        warmup_size: int,
+        iteration_size: int,
+        word_min: int,
+        word_max: int,
+        sent_min: int,
+        sent_max: int,
+        random_seed: int,
 ) -> None:
     random.seed(random_seed)
 
@@ -96,26 +98,27 @@ def profile_full_elmo(
 
     durations: List[float] = []
 
-    for _ in range(iteration_size):
+    for idx in range(warmup_size + iteration_size):
         batch = sent_gen.generate_batch(batch_size)
         char_ids = batch_to_char_ids(batch)
 
         if cuda:
             char_ids = char_ids.cuda()
+            if cuda_synchronize:
+                torch.cuda.synchronize()
 
         start = time.time()
         with torch.no_grad():
             module(char_ids)
+        if cuda and cuda_synchronize:
+            torch.cuda.synchronize()
         end = time.time()
 
-        durations.append(end - start)
+        if idx >= warmup_size:
+            durations.append(end - start)
 
     mean = statistics.mean(durations)
     median = statistics.median(durations)
     stdev = statistics.stdev(durations)
 
-    print(f'Finish {iteration_size} iterations.')
-    print(f'Mode: {mode}')
-    print(f'Duration Mean: {mean}')
-    print(f'Duration Median: {median}')
-    print(f'Duration Stdev: {stdev}')
+    return mean, median, stdev
