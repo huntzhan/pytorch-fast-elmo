@@ -57,7 +57,9 @@ Options:
 Usage
 -----
 
-Install::
+Please install **torch==1.0.0** first. Then, simply run this command to install this package.
+
+.. code-block:: bash
 
     pip install pytorch-fast-elmo
 
