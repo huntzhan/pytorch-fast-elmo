@@ -57,7 +57,7 @@ Options:
 Usage
 -----
 
-Please install **torch==1.0.0** first. Then, simply run this command to install this package.
+Please install **torch==1.0.0** first. Then, simply run this command to install.
 
 .. code-block:: bash
 
@@ -81,7 +81,7 @@ Please install **torch==1.0.0** first. Then, simply run this command to install 
     embeddings = elmo(character_ids)
 
 
-``FastElmoWordEmbedding`` could be used if you have disabled ``char_cnn`` in ``bilm-tf``, or intend to cache the Char CNN representation as word embedding.
+Use ``FastElmoWordEmbedding`` if you have disabled ``char_cnn`` in ``bilm-tf``, or have exported the Char CNN representation to a weight file.
 
 .. code-block:: python
 
@@ -96,6 +96,7 @@ Please install **torch==1.0.0** first. Then, simply run this command to install 
     elmo = FastElmoWordEmbedding(
             options_file,
             weight_file,
+            # Could be omitted if the embedding weight is in `weight_file`.
             word_embedding_weight_file=embedding_file,
     )
     vocab2id = load_and_build_vocab2id(vocab_file)
@@ -106,7 +107,7 @@ Please install **torch==1.0.0** first. Then, simply run this command to install 
     embeddings = elmo(word_ids)
 
 
-A CLI command to cache the Char CNN.
+CLI command for exporting the Char CNN representation.
 
 .. code-block:: bash
 
