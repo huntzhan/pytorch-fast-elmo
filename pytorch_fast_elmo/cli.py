@@ -1,5 +1,7 @@
-# pylint: skip-file
-import cProfile, pstats, io
+# pylint: disable=no-self-use
+import cProfile
+import pstats
+import io
 
 import fire
 from pytorch_fast_elmo import utils, profile
@@ -14,7 +16,7 @@ class Main:
             weight_file,
             hdf5_out,
             max_characters_per_token=utils.ElmoCharacterIdsConst.MAX_WORD_LENGTH,
-            cuda=False,
+            cuda_device=-1,
             batch_size=256,
     ):
         utils.cache_char_cnn_vocab(
@@ -23,7 +25,7 @@ class Main:
                 weight_file,
                 hdf5_out,
                 max_characters_per_token,
-                cuda,
+                cuda_device,
                 batch_size,
         )
 
@@ -32,7 +34,7 @@ class Main:
             mode,
             options_file,
             weight_file,
-            cuda=False,
+            cuda_device=-1,
             cuda_synchronize=False,
             batch_size=32,
             warmup_size=20,
@@ -48,14 +50,14 @@ class Main:
         sstream = io.StringIO()
 
         if profiler:
-            pr = cProfile.Profile()
-            pr.enable()
+            cpr = cProfile.Profile()
+            cpr.enable()
 
         mean, median, stdev = profile.profile_full_elmo(
                 mode,
                 options_file,
                 weight_file,
-                cuda,
+                cuda_device,
                 cuda_synchronize,
                 batch_size,
                 warmup_size,
@@ -74,9 +76,8 @@ class Main:
         sstream.write(f'Duration Stdev: {stdev}\n\n')
 
         if profiler:
-            pr.disable()
-            ps = pstats.Stats(pr, stream=sstream).sort_stats('cumulative')
-            ps.print_stats()
+            cpr.disable()
+            pstats.Stats(cpr, stream=sstream).sort_stats('cumulative').print_stats()
 
         if output_file:
             with open(output_file, 'w') as fout:

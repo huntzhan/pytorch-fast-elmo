@@ -1,4 +1,3 @@
-# pylint: skip-file
 from typing import List, Any, Tuple
 import random
 import string
@@ -65,7 +64,7 @@ def profile_full_elmo(
         mode: str,
         options_file: str,
         weight_file: str,
-        cuda: bool,
+        cuda_device: int,
         cuda_synchronize: bool,
         batch_size: int,
         warmup_size: int,
@@ -93,8 +92,8 @@ def profile_full_elmo(
             sent_max,
     )
 
-    if cuda:
-        module = module.cuda()
+    if cuda_device >= 0:
+        module = module.cuda(cuda_device)
 
     durations: List[float] = []
 
@@ -102,15 +101,15 @@ def profile_full_elmo(
         batch = sent_gen.generate_batch(batch_size)
         char_ids = batch_to_char_ids(batch)
 
-        if cuda:
-            char_ids = char_ids.cuda()
+        if cuda_device >= 0:
+            char_ids = char_ids.cuda(cuda_device)
             if cuda_synchronize:
                 torch.cuda.synchronize()
 
         start = time.time()
         with torch.no_grad():
             module(char_ids)
-        if cuda and cuda_synchronize:
+        if cuda_device >= 0 and cuda_synchronize:
             torch.cuda.synchronize()
         end = time.time()
 

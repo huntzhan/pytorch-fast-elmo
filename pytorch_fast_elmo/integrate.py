@@ -230,28 +230,34 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         only_trainable=True,
                 )
 
+    def _cpp_ext_cuda(self, cpp_module: Any, device: Optional[int] = None) -> None:
+        # TODO: handle optional parameter in cpp extension.
+        if device is not None:
+            cpp_module.cuda(device)
+        else:
+            cpp_module.cuda()
+
     def cuda(self, device=None):  # type: ignore
         # Move all cpp exntensions to GPU.
         if not self.disable_char_cnn:
-            self.char_cnn.cuda()
+            self._cpp_ext_cuda(self.char_cnn, device)
 
         if not self.disable_word_embedding:
-            self.word_embedding_weight = self.word_embedding_weight.cuda()
+            self.word_embedding_weight = self.word_embedding_weight.cuda(device)
 
         if not self.disable_forward_lstm:
-            self.forward_lstm.cuda()
+            self._cpp_ext_cuda(self.forward_lstm, device)
         if not self.disable_backward_lstm:
-            self.backward_lstm.cuda()
+            self._cpp_ext_cuda(self.backward_lstm, device)
 
         if not self.disable_scalar_mix:
             for scalar_mix in self.scalar_mixes:
-                scalar_mix.cuda()
+                self._cpp_ext_cuda(scalar_mix, device)
 
         # Override parameter bindings.
         self._bind_parameters(override=True)
 
-        # TODO: find a way to pass `device` to cpp extension.
-        return super().cuda()
+        return super().cuda(device)
 
     def cpu(self):  # type: ignore
         # Move all cpp exntensions to CPU.

@@ -18,8 +18,8 @@ Introduction
 
 A fast ELMo implementation with features:
 
-- **Lower execution overhead.** The core components are reimplemented in Libtorch in order to reduce the Python execution overhead significantly (**~45%** speedup).
-- **More flexible design.** By redesigning the workflow, the user could extend or change the ELMo model easily. We provide a word embedding ELMo extension for demonstration.
+- **Lower execution overhead.** The core components are reimplemented in Libtorch in order to reduce the Python execution overhead (**45%** speedup).
+- **A more flexible design.** By redesigning the workflow, the user could extend or change the ELMo behavior easily.
 
 Benchmark
 ---------
@@ -107,10 +107,11 @@ Use ``FastElmoWordEmbedding`` if you have disabled ``char_cnn`` in ``bilm-tf``, 
     embeddings = elmo(word_ids)
 
 
-CLI command for exporting the Char CNN representation.
+CLI commands:
 
 .. code-block:: bash
 
+    # For exporting the Char CNN representation.
     fast-elmo cache-char-cnn ./vocab.txt ./options.json ./lm_weights.hdf5 ./lm_ebd.hdf5
 
 

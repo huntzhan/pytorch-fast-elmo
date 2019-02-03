@@ -209,8 +209,9 @@ def get_bos_eos_token_repr(
     eos_ids = make_eos(max_characters_per_token)
     bos_eos = torch.LongTensor([bos_ids, eos_ids])
 
-    if char_cnn.parameters()[0].is_cuda:
-        bos_eos = bos_eos.cuda()
+    char_cnn_param = char_cnn.parameters()[0]
+    if char_cnn_param.is_cuda:
+        bos_eos = bos_eos.cuda(char_cnn_param.get_device())
 
     with torch.no_grad():
         bos_eos_reprs = char_cnn(bos_eos)
@@ -224,7 +225,7 @@ def cache_char_cnn_vocab(
         weight_file: str,
         hdf5_out: str,
         max_characters_per_token: int = ElmoCharacterIdsConst.MAX_WORD_LENGTH,
-        cuda: bool = False,
+        cuda_device: int = -1,
         batch_size: int = 256,
 ) -> None:
     """
@@ -242,16 +243,16 @@ def cache_char_cnn_vocab(
             weight_file,
     )
     char_cnn = char_cnn_restorer.restore(requires_grad=False)
-    if cuda:
-        char_cnn.cuda()
+    if cuda_device >= 0:
+        char_cnn.cuda(cuda_device)
 
     cached = []
     for batch_start in range(0, len(vocab), batch_size):
         batch = vocab[batch_start:batch_start + batch_size]
         # (1, batch_size, max_characters_per_token)
         char_ids = batch_to_char_ids([batch], max_characters_per_token)
-        if cuda:
-            char_ids = char_ids.cuda()
+        if cuda_device >= 0:
+            char_ids = char_ids.cuda(cuda_device)
 
         inputs = pack_inputs(char_ids)
         output_data = char_cnn(inputs.data)
@@ -262,7 +263,7 @@ def cache_char_cnn_vocab(
 
     # (vocab, output_dim)
     combined = torch.cat(cached, dim=0)
-    if cuda:
+    if cuda_device >= 0:
         combined = combined.cpu()
     embedding_weight = combined.numpy()
 
@@ -271,7 +272,7 @@ def cache_char_cnn_vocab(
             char_cnn_restorer,
             char_cnn,
     )
-    if cuda:
+    if cuda_device >= 0:
         lstm_bos_repr = lstm_bos_repr.cpu()
         lstm_eos_repr = lstm_eos_repr.cpu()
 

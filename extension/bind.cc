@@ -20,6 +20,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("output_dim"))
 
       .def(
+          "cuda",
+          [](cnt::ElmoCharacterEncoder& module, int64_t device) {
+            module.to("cuda:" + std::to_string(device));
+          })
+
+      .def(
           "__call__",
           (
               torch::Tensor
@@ -43,6 +49,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("do_layer_norm") = false,
           py::arg("initial_scalar_parameters") = std::vector<double>(),
           py::arg("trainable") = true)
+
+      .def(
+          "cuda",
+          [](cnt::ScalarMix& module, int64_t device) {
+            module.to("cuda:" + std::to_string(device));
+          })
 
       .def(
           "__call__",
