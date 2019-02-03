@@ -1,5 +1,5 @@
 # pylint: skip-file
-from typing import List, Any
+from typing import List, Any, Tuple
 import random
 import string
 import time
@@ -75,7 +75,7 @@ def profile_full_elmo(
         sent_min: int,
         sent_max: int,
         random_seed: int,
-) -> None:
+) -> Tuple[float, float, float]:
     random.seed(random_seed)
 
     module: Any = None
