@@ -41,11 +41,11 @@ Options:
 +--------------------------------------+------------------------+------------------------+
 | Item                                 | Mean Of Durations (ms) | cumtime(synchronize)%  |
 +======================================+========================+========================+
-| Fast ELMo (CUDA, no synchronize)     | 31                     | N/A                    |
+| Fast ELMo (CUDA, no synchronize)     | **31**                 | N/A                    |
 +--------------------------------------+------------------------+------------------------+
 | AllenNLP ELMo (CUDA, no synchronize) | 56                     | N/A                    |
 +--------------------------------------+------------------------+------------------------+
-| Fast ELMo (CUDA, synchronize)        | 47                     | 26.13%                 |
+| Fast ELMo (CUDA, synchronize)        | 47                     | **26.13%**             |
 +--------------------------------------+------------------------+------------------------+
 | AllenNLP ELMo (CUDA, synchronize)    | 57                     | 0.02%                  |
 +--------------------------------------+------------------------+------------------------+
@@ -62,17 +62,17 @@ Install::
     pip install pytorch-fast-elmo
 
 
-`FastElmo` should have the same behavior as AllenNLP's `ELMo`::
+``FastElmo`` should have the same behavior as AllenNLP's ``ELMo``::
 
     TODO
 
 
-`FastElmoWordEmbedding` could be used if you have disabled `char_cnn` in `bilm-tf`, or intend to cache the Char CNN representation as word embedding::
+``FastElmoWordEmbedding`` could be used if you have disabled ``char_cnn`` in ``bilm-tf``, or intend to cache the Char CNN representation as word embedding::
 
     TODO
 
 
-We provided a CLI command to cache the Char CNN::
+A CLI command to cache the Char CNN::
 
     fast-elmo cache-char-cnn ./vocab.txt ./options.json ./lm_weights.hdf5 ./lm_ebd.hdf5
 
