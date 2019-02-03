@@ -57,22 +57,59 @@ Options:
 Usage
 -----
 
-Install::
+Please install **torch==1.0.0** first. Then, simply run this command to install.
+
+.. code-block:: bash
 
     pip install pytorch-fast-elmo
 
 
-``FastElmo`` should have the same behavior as AllenNLP's ``ELMo``::
+``FastElmo`` should have the same behavior as AllenNLP's ``ELMo``.
 
-    TODO
+.. code-block:: python
+
+    from pytorch_fast_elmo import FastElmo, batch_to_char_ids
+
+    options_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_options.json'
+    weight_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5'
+
+    elmo = FastElmo(options_file, weight_file)
+
+    sentences = [['First', 'sentence', '.'], ['Another', '.']]
+    character_ids = batch_to_ids(sentences)
+
+    embeddings = elmo(character_ids)
 
 
-``FastElmoWordEmbedding`` could be used if you have disabled ``char_cnn`` in ``bilm-tf``, or intend to cache the Char CNN representation as word embedding::
+Use ``FastElmoWordEmbedding`` if you have disabled ``char_cnn`` in ``bilm-tf``, or have exported the Char CNN representation to a weight file.
 
-    TODO
+.. code-block:: python
+
+    from pytorch_fast_elmo import FastElmoWordEmbedding, load_and_build_vocab2id, batch_to_word_ids,
+
+    options_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_options.json'
+    weight_file = '/path/to/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5'
+
+    vocab_file = '/path/to/vocab.txt'
+    embedding_file = '/path/to/cached_elmo_embedding.hdf5'
+
+    elmo = FastElmoWordEmbedding(
+            options_file,
+            weight_file,
+            # Could be omitted if the embedding weight is in `weight_file`.
+            word_embedding_weight_file=embedding_file,
+    )
+    vocab2id = load_and_build_vocab2id(vocab_file)
+
+    sentences = [['First', 'sentence', '.'], ['Another', '.']]
+    word_ids = batch_to_word_ids(sentences, vocab2id)
+
+    embeddings = elmo(word_ids)
 
 
-A CLI command to cache the Char CNN::
+CLI command for exporting the Char CNN representation.
+
+.. code-block:: bash
 
     fast-elmo cache-char-cnn ./vocab.txt ./options.json ./lm_weights.hdf5 ./lm_ebd.hdf5
 
