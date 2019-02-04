@@ -1,18 +1,9 @@
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-    - gcc-4.9
-    - g++-4.9
 language: python
 dist: xenial
 python:
 - "3.6"
 install:
 - pip install -U pip
-- sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 60 --slave
-  /usr/bin/g++ g++ /usr/bin/g++-4.9
 - pip install -U torch thinc spacy pluggy
 - pip install -U -r requirements_dev.txt --progress-bar off
 - python setup.py develop
