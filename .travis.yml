@@ -6,8 +6,9 @@ addons:
     - gcc-4.9
     - g++-4.9
 language: python
+dist: xenial
 python:
-- "3.6-dev"
+- "3.6"
 install:
 - pip install -U pip
 - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 60 --slave
