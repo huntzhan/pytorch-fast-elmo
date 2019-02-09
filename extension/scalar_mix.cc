@@ -12,11 +12,11 @@ ScalarMixImpl::ScalarMixImpl(
     mixture_size_(mixture_size),
     do_layer_norm_(do_layer_norm) {
   if (initial_scalar_parameters.empty()) {
-    // Initialize with zeros.
+    // Initialize with 1/n.
     initial_scalar_parameters.insert(
         initial_scalar_parameters.end(),
         mixture_size,
-        0.0);
+        1.0 / static_cast<double>(mixture_size));
   } else if (
       static_cast<int64_t>(initial_scalar_parameters.size()) != \
       mixture_size) {
