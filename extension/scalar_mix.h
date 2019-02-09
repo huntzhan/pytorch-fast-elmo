@@ -6,8 +6,8 @@
 
 namespace cnt {
 
-struct ScalarMix : torch::nn::Module {
-  ScalarMix(
+struct ScalarMixImpl : torch::nn::Module {
+  ScalarMixImpl(
       int64_t mixture_size,
       bool do_layer_norm,
       std::vector<double> initial_scalar_parameters,
@@ -17,15 +17,14 @@ struct ScalarMix : torch::nn::Module {
       const std::vector<torch::Tensor> &tensors,
       torch::Tensor mask);
 
-  torch::Tensor forward(
-      const std::vector<torch::Tensor> &tensors);
-
   int64_t mixture_size_ = -1;
   bool do_layer_norm_ = false;
 
   std::vector<torch::Tensor> scalar_parameters_ = {};
   torch::Tensor gamma_;
 };
+
+TORCH_MODULE(ScalarMix);
 
 }  // namespace cnt
 

@@ -13,9 +13,9 @@ using TorchActivationType =
 using ElmoCharacterEncoderFiltersType =
     std::vector<std::tuple<int64_t, int64_t>>;
 
-struct Highway : torch::nn::Module {
+struct HighwayImpl : torch::nn::Module {
   // https://arxiv.org/abs/1505.00387
-  Highway(
+  HighwayImpl(
       int64_t input_dim,
       int64_t num_layers,
       TorchActivationType activation);
@@ -27,8 +27,10 @@ struct Highway : torch::nn::Module {
   TorchActivationType activation_ = nullptr;
 };
 
-struct ElmoCharacterEncoder : torch::nn::Module {
-  ElmoCharacterEncoder(
+TORCH_MODULE(Highway);
+
+struct ElmoCharacterEncoderImpl : torch::nn::Module {
+  ElmoCharacterEncoderImpl(
       // Char embedding.
       int64_t char_embedding_cnt,
       int64_t char_embedding_dim,
@@ -64,11 +66,13 @@ struct ElmoCharacterEncoder : torch::nn::Module {
   TorchActivationType activation_ = nullptr;
 
   // Highway.
-  std::shared_ptr<Highway> highway_ = nullptr;
+  Highway highway_ = nullptr;
 
   // Output projection.
   torch::nn::Linear output_proj_ = nullptr;
 };
+
+TORCH_MODULE(ElmoCharacterEncoder);
 
 }  // namespace cnt
 

@@ -2,7 +2,7 @@
 #include "extension/scalar_mix.h"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  torch::python::bind_module<cnt::ElmoCharacterEncoder>(
+  torch::python::bind_module<cnt::ElmoCharacterEncoderImpl>(
       m, "ElmoCharacterEncoder")
 
       .def(
@@ -21,20 +21,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
       .def(
           "cuda",
-          [](cnt::ElmoCharacterEncoder& module, int64_t device) {
+          [](cnt::ElmoCharacterEncoderImpl& module, int64_t device) {
             module.to("cuda:" + std::to_string(device));
           })
 
       .def(
           "__call__",
-          (
-              torch::Tensor
-              (cnt::ElmoCharacterEncoder::*)
-              (torch::Tensor)
-          )
-              &cnt::ElmoCharacterEncoder::forward);
+          &cnt::ElmoCharacterEncoderImpl::forward);
 
-  torch::python::bind_module<cnt::ScalarMix>(
+  torch::python::bind_module<cnt::ScalarMixImpl>(
       m, "ScalarMix")
 
       .def(
@@ -52,25 +47,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
       .def(
           "cuda",
-          [](cnt::ScalarMix& module, int64_t device) {
+          [](cnt::ScalarMixImpl& module, int64_t device) {
             module.to("cuda:" + std::to_string(device));
           })
 
       .def(
           "__call__",
-          (
-              torch::Tensor
-              (cnt::ScalarMix::*)
-              (const std::vector<torch::Tensor> &, torch::Tensor)
-          )
-              &cnt::ScalarMix::forward)
+          &cnt::ScalarMixImpl::forward)
 
       .def(
           "__call__",
-          (
-              torch::Tensor
-              (cnt::ScalarMix::*)
-              (const std::vector<torch::Tensor> &)
-          )
-              &cnt::ScalarMix::forward);
+          [](cnt::ScalarMixImpl& module,
+              const std::vector<torch::Tensor> &tensors) {
+            return module.forward(tensors, torch::Tensor());
+          });
 }

@@ -3,7 +3,7 @@
 
 namespace cnt {
 
-ScalarMix::ScalarMix(
+ScalarMixImpl::ScalarMixImpl(
     int64_t mixture_size,
     bool do_layer_norm,
     std::vector<double> initial_scalar_parameters,
@@ -70,7 +70,7 @@ inline torch::Tensor apply_layer_norm(
 // We assume 1. the shapes of `tensors` are identical.
 //           2. the shape of `mask`, if `mask` is provided,
 //              should match the prefix of the shape of `tensors`.
-torch::Tensor ScalarMix::forward(
+torch::Tensor ScalarMixImpl::forward(
     const std::vector<torch::Tensor> &tensors,
     torch::Tensor mask) {
   // Check the length of `tensors`.
@@ -121,11 +121,6 @@ torch::Tensor ScalarMix::forward(
     }
   }
   return gamma_ * total;
-}
-
-torch::Tensor ScalarMix::forward(
-    const std::vector<torch::Tensor> &tensors) {
-  return forward(tensors, torch::Tensor());
 }
 
 }  // namespace cnt

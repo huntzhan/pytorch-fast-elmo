@@ -3,7 +3,7 @@
 
 namespace cnt {
 
-Highway::Highway(
+HighwayImpl::HighwayImpl(
     int64_t input_dim,
     int64_t num_layers,
     TorchActivationType activation)
@@ -28,11 +28,11 @@ Highway::Highway(
   }
 }
 
-torch::Tensor Highway::forward(torch::Tensor inputs) {
+torch::Tensor HighwayImpl::forward(torch::Tensor inputs) {
   auto cur_inputs = inputs;
 
   for (auto layer : layers_) {
-    auto proj_inputs = layer->forward(cur_inputs);
+    auto proj_inputs = layer(cur_inputs);
 
     auto transform = proj_inputs.narrow(-1, 0, input_dim_);
     auto transform_gate = proj_inputs.narrow(-1, input_dim_, input_dim_);
@@ -44,7 +44,7 @@ torch::Tensor Highway::forward(torch::Tensor inputs) {
   return cur_inputs;
 }
 
-ElmoCharacterEncoder::ElmoCharacterEncoder(
+ElmoCharacterEncoderImpl::ElmoCharacterEncoderImpl(
     int64_t char_embedding_cnt,
     int64_t char_embedding_dim,
     ElmoCharacterEncoderFiltersType filters,
@@ -95,7 +95,7 @@ ElmoCharacterEncoder::ElmoCharacterEncoder(
   }
 
   // Build highway layers.
-  highway_ = std::make_shared<Highway>(
+  highway_ = Highway(
       total_out_channels,
       num_highway_layers,
       // hardcoded as bilm-tf.
@@ -107,9 +107,9 @@ ElmoCharacterEncoder::ElmoCharacterEncoder(
   register_module("output_proj", output_proj_);
 }
 
-torch::Tensor ElmoCharacterEncoder::forward(torch::Tensor inputs) {
+torch::Tensor ElmoCharacterEncoderImpl::forward(torch::Tensor inputs) {
   // Of shape `(*, char_embedding_dim, max_chars_per_token)`.
-  auto char_ebds = char_embedding_->forward(inputs).transpose(1, 2);
+  auto char_ebds = char_embedding_(inputs).transpose(1, 2);
 
   // Apply CNN.
   std::vector<torch::Tensor> conv_outputs(convolutions_.size());
@@ -117,7 +117,7 @@ torch::Tensor ElmoCharacterEncoder::forward(torch::Tensor inputs) {
       conv_idx < static_cast<int64_t>(convolutions_.size());
       ++conv_idx) {
     // `(*, C_out, L_out)`
-    auto convolved = convolutions_[conv_idx]->forward(char_ebds);
+    auto convolved = convolutions_[conv_idx](char_ebds);
     // `(*, C_out)`
     convolved = std::get<0>(torch::max(convolved, -1));  // NOLINT
     convolved = activation_(convolved);
@@ -129,11 +129,11 @@ torch::Tensor ElmoCharacterEncoder::forward(torch::Tensor inputs) {
 
   // Apply highway.
   // `(*, total_out_channels)`
-  char_repr = highway_->forward(char_repr);
+  char_repr = highway_(char_repr);
 
   // Apply output projection.
   // `(*, output_dim)`
-  char_repr = output_proj_->forward(char_repr);
+  char_repr = output_proj_(char_repr);
 
   return char_repr;
 }
