@@ -3,7 +3,7 @@
 
 __author__ = """Hunt Zhan"""
 __email__ = 'huntzhan.dev@gmail.com'
-__version__ = '0.3.2'
+__version__ = '0.4.0'
 
 # To avoid `undefined symbol` error.
 import torch
