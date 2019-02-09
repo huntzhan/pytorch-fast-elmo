@@ -207,6 +207,7 @@ class ElmoLstmRestorer(RestorerBase):
         self.cell_size = self.options['lstm']['dim']
         self.cell_clip = self.options['lstm']['cell_clip']
         self.proj_clip = self.options['lstm']['proj_clip']
+        self.truncated_bptt = self.options.get('unroll_steps', 20)
         self.use_skip_connections = True
 
         self.named_parameters: Dict[str, torch.Tensor] = {}
@@ -221,6 +222,7 @@ class ElmoLstmRestorer(RestorerBase):
                     cell_size=self.cell_size,
                     cell_clip=self.cell_clip,
                     proj_clip=self.proj_clip,
+                    truncated_bptt=self.truncated_bptt,
                     use_skip_connections=self.use_skip_connections,
             )
             fwd_lstm_named_parameters = fwd_lstm.named_parameters()
@@ -236,6 +238,7 @@ class ElmoLstmRestorer(RestorerBase):
                     cell_size=self.cell_size,
                     cell_clip=self.cell_clip,
                     proj_clip=self.proj_clip,
+                    truncated_bptt=self.truncated_bptt,
                     use_skip_connections=self.use_skip_connections,
             )
             bwd_lstm_named_parameters = bwd_lstm.named_parameters()
