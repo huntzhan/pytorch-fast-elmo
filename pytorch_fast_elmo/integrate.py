@@ -83,6 +83,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
             # Controls the behavior of execution.
             exec_managed_lstm_bos_eos: bool = True,
+            exec_managed_lstm_reset_states: bool = False,
             exec_sort_batch: bool = True,
 
             # Controls the behavior of `ScalarMix`.
@@ -141,6 +142,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         self.disable_scalar_mix = disable_scalar_mix
 
         self.exec_managed_lstm_bos_eos = exec_managed_lstm_bos_eos
+        self.exec_managed_lstm_reset_states = exec_managed_lstm_reset_states
         self.exec_sort_batch = exec_sort_batch
 
         # Char CNN.
@@ -175,6 +177,8 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                     cnt=word_embedding_cnt,
                     dim=word_embedding_dim,
             )
+            if exec_managed_lstm_bos_eos:
+                raise ValueError('exec_managed_lstm_bos_eos should be disabled.')
 
         if not disable_word_embedding:
             # Not a cpp extension.
@@ -208,17 +212,18 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
             # Cache BOS/EOS reprs.
-            if disable_char_cnn:
-                if lstm_bos_repr is None or lstm_eos_repr is None:
-                    raise ValueError('BOS/EOS not provided.')
-                self.lstm_bos_repr = lstm_bos_repr
-                self.lstm_eos_repr = lstm_eos_repr
+            if exec_managed_lstm_bos_eos:
+                if disable_char_cnn:
+                    if lstm_bos_repr is None or lstm_eos_repr is None:
+                        raise ValueError('BOS/EOS not provided.')
+                    self.lstm_bos_repr = lstm_bos_repr
+                    self.lstm_eos_repr = lstm_eos_repr
 
-            else:
-                self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
-                        self.char_cnn_restorer,
-                        self.char_cnn,
-                )
+                else:
+                    self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
+                            self.char_cnn_restorer,
+                            self.char_cnn,
+                    )
 
         # ScalarMix
         if not disable_scalar_mix:
@@ -439,6 +444,8 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             max_batch_size = int(inputs.batch_sizes.data[0])
             # BOS.
             self.exec_forward_lstm_bos(max_batch_size)
+        elif self.exec_managed_lstm_reset_states:
+            self.forward_lstm.reset_states()
 
         # Feed inputs.
         outputs, _ = self.forward_lstm(inputs.data, inputs.batch_sizes)
@@ -461,6 +468,8 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             max_batch_size = int(inputs.batch_sizes.data[0])
             # EOS.
             self.exec_backward_lstm_eos(max_batch_size)
+        elif self.exec_managed_lstm_reset_states:
+            self.backward_lstm.reset_states()
 
         # Feed inputs.
         outputs, _ = self.backward_lstm(inputs.data, inputs.batch_sizes)
