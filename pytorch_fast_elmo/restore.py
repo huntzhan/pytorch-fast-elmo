@@ -3,7 +3,7 @@ Follows AllenNLP.
 """
 # pylint: disable=attribute-defined-outside-init
 
-from typing import Dict, Tuple, Any, Optional
+from typing import Dict, Tuple, Any, Optional, List
 import json
 
 import torch
@@ -40,9 +40,34 @@ class RestorerBase:
 
 class ElmoCharacterEncoderRestorer(RestorerBase):
 
+    @staticmethod
+    def from_scratch(
+            char_embedding_cnt: int,
+            char_embedding_dim: int,
+            filters: List[Tuple[int, int]],
+            activation: str,
+            num_highway_layers: int,
+            output_dim: int,
+    ) -> 'ElmoCharacterEncoderRestorer':
+        restorer = ElmoCharacterEncoderRestorer(None, None)
+        restorer.options = {
+                'n_characters': char_embedding_cnt,
+                'char_cnn': {
+                        'embedding': {
+                                'dim': char_embedding_dim
+                        },
+                        'filters': filters,
+                        'activation': activation,
+                        'n_highway': num_highway_layers,
+                },
+                'lstm': {
+                        'projection_dim': output_dim
+                },
+        }
+        return restorer
+
     def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         assert self.options and 'char_cnn' in self.options
-        assert self.weight_file
 
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
         self.char_embedding_cnt = self.options.get('n_characters', 261)
@@ -64,10 +89,13 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
         )
         self.named_parameters.update(module.named_parameters())
 
-        self._load_char_embedding()
-        self._load_cnn_weights()
-        self._load_highway()
-        self._load_projection()
+        if self.weight_file:
+            self._load_char_embedding()
+            self._load_cnn_weights()
+            self._load_highway()
+            self._load_projection()
+        else:
+            assert requires_grad
 
         if not requires_grad:
             freeze_parameters(self.named_parameters)
@@ -158,6 +186,20 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
 
 class ElmoWordEmbeddingRestorer(RestorerBase):
 
+    @staticmethod
+    def from_scratch(
+            cnt: int,
+            dim: int,
+    ) -> 'ElmoWordEmbeddingRestorer':
+        restorer = ElmoWordEmbeddingRestorer(None, None)
+        restorer.options = {
+                'word_embedding': {
+                        'cnt': cnt,
+                        'dim': dim,
+                },
+        }
+        return restorer
+
     def restore(
             self,
             requires_grad: bool = False,
@@ -165,31 +207,70 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         """
         Returns (embedding, lstm_bos, lstm_eos)
         """
-        assert self.options is None
-        assert self.weight_file
+        if self.weight_file:
+            assert self.options is None
 
-        with h5py.File(self.weight_file, 'r') as fin:
-            assert 'embedding' in fin
+            with h5py.File(self.weight_file, 'r') as fin:
+                assert 'embedding' in fin
 
-            ebd_weight = fin['embedding'][...]
+                ebd_weight = fin['embedding'][...]
 
-            # Since bilm-tf doesn't include padding,
-            # we need to prepend a padding row in index 0.
+                # Since bilm-tf doesn't include padding,
+                # we need to prepend a padding row in index 0.
+                ebd = torch.zeros(
+                        (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                        dtype=torch.float,
+                )
+
+                ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
+                ebd.requires_grad = requires_grad
+
+                lstm_bos_repr = ebd.data[1]
+                lstm_eos_repr = ebd.data[2]
+
+        else:
+            assert requires_grad
+            assert self.options['word_embedding']['cnt'] > 0
+
             ebd = torch.zeros(
-                    (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                    (self.options['word_embedding']['cnt'] + 1,
+                     self.options['word_embedding']['dim']),
                     dtype=torch.float,
             )
+            ebd.requires_grad = True
 
-            ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
-            ebd.requires_grad = requires_grad
+            # `exec_managed_lstm_bos_eos` should be disabled in this case.
+            lstm_bos_repr = None
+            lstm_eos_repr = None
 
-            lstm_bos_repr = ebd.data[1]
-            lstm_eos_repr = ebd.data[2]
-
-            return ebd, lstm_bos_repr, lstm_eos_repr
+        return ebd, lstm_bos_repr, lstm_eos_repr
 
 
 class ElmoLstmRestorer(RestorerBase):
+
+    @staticmethod
+    def from_scratch(
+            num_layers: int,
+            input_size: int,
+            hidden_size: int,
+            cell_size: int,
+            cell_clip: float,
+            proj_clip: float,
+            truncated_bptt: int,
+    ) -> 'ElmoLstmRestorer':
+        restorer = ElmoLstmRestorer(None, None)
+        restorer.options = {
+                'lstm': {
+                        'n_layers': num_layers,
+                        'projection_dim': input_size,
+                        '_hidden_size': hidden_size,
+                        'dim': cell_size,
+                        'cell_clip': cell_clip,
+                        'proj_clip': proj_clip,
+                },
+                'unroll_steps': truncated_bptt,
+        }
+        return restorer
 
     def restore(
             self,
@@ -199,16 +280,19 @@ class ElmoLstmRestorer(RestorerBase):
             backward_requires_grad: bool = False,
     ) -> Tuple[StatefulUnidirectionalLstm, StatefulUnidirectionalLstm]:
         assert self.options and 'lstm' in self.options
-        assert self.weight_file
 
         self.num_layers = self.options['lstm']['n_layers']
         self.input_size = self.options['lstm']['projection_dim']
-        self.hidden_size = self.input_size
         self.cell_size = self.options['lstm']['dim']
         self.cell_clip = self.options['lstm']['cell_clip']
         self.proj_clip = self.options['lstm']['proj_clip']
         self.truncated_bptt = self.options.get('unroll_steps', 20)
         self.use_skip_connections = True
+
+        if self.options['lstm'].get('_hidden_size', 0) > 0:
+            self.hidden_size = self.options['lstm']['_hidden_size']
+        else:
+            self.hidden_size = self.input_size
 
         self.named_parameters: Dict[str, torch.Tensor] = {}
 
@@ -250,21 +334,27 @@ class ElmoLstmRestorer(RestorerBase):
                 raise ValueError('key conflict.')
 
         # Load weights.
-        with h5py.File(self.weight_file, 'r') as fin:
-            for layer_idx in range(self.num_layers):
-                for direction, prefix in enumerate([
-                        'uni_lstm.forward_layer_',
-                        'uni_lstm.backward_layer_',
-                ]):
-                    good_forward = (direction == 0 and enable_forward)
-                    good_backward = (direction == 1 and enable_backward)
-                    if good_forward or good_backward:
-                        dataset = fin[f'RNN_{direction}']\
-                                    ['RNN']\
-                                    ['MultiRNNCell']\
-                                    [f'Cell{layer_idx}']\
-                                    ['LSTMCell']
-                        self._load_lstm(prefix + str(layer_idx), dataset)
+        if self.weight_file:
+            with h5py.File(self.weight_file, 'r') as fin:
+                for layer_idx in range(self.num_layers):
+                    for direction, prefix in enumerate([
+                            'uni_lstm.forward_layer_',
+                            'uni_lstm.backward_layer_',
+                    ]):
+                        good_forward = (direction == 0 and enable_forward)
+                        good_backward = (direction == 1 and enable_backward)
+                        if good_forward or good_backward:
+                            dataset = fin[f'RNN_{direction}']\
+                                        ['RNN']\
+                                        ['MultiRNNCell']\
+                                        [f'Cell{layer_idx}']\
+                                        ['LSTMCell']
+                            self._load_lstm(prefix + str(layer_idx), dataset)
+        else:
+            if enable_forward:
+                assert forward_requires_grad
+            if enable_backward:
+                assert backward_requires_grad
 
         if enable_forward and not forward_requires_grad:
             freeze_parameters(fwd_lstm_named_parameters)

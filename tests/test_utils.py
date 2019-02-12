@@ -45,8 +45,8 @@ def test_cache_char_cnn_vocab(tmpdir):
     )
 
     fast_word_ebd = FastElmoBase(
+            ELMO_OPTIONS_FILE,
             None,
-            '',
             disable_word_embedding=False,
             word_embedding_weight_file=embedding_path.realpath(),
             # Disable all other components.
