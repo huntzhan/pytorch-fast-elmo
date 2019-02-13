@@ -245,12 +245,10 @@ def export_word_embedding_to_txt(
         txt_out: str,
 ) -> None:
     if embedding_weight.shape[0] != len(vocab):
-        raise ValueError(
-                'Size not match. '
-                f'embd({embedding_weight.shape[0]}) '
-                '!= '
-                f'vocab({len(vocab)})'
-        )
+        raise ValueError('Size not match. '
+                         f'embd({embedding_weight.shape[0]}) '
+                         '!= '
+                         f'vocab({len(vocab)})')
 
     with open(txt_out, 'w') as fout:
         for idx, token in enumerate(vocab):
