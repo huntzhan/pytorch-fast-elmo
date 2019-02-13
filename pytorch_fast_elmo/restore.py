@@ -108,7 +108,7 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
 
         if char_embed_weights.shape != \
                 (self.char_embedding_cnt, self.char_embedding_dim):
-            raise ValueError('Char ebd shape not match. '
+            raise ValueError('Char embd shape not match. '
                              f'Loaded shape: {char_embed_weights.shape}')
 
         self.named_parameters['char_embedding.weight'].data[0:, :] = \
@@ -215,20 +215,20 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
                 with h5py.File(self.weight_file, 'r') as fin:
                     assert 'embedding' in fin
 
-                    ebd_weight = fin['embedding'][...]
+                    embd_weight = fin['embedding'][...]
 
                     # Since bilm-tf doesn't include padding,
                     # we need to prepend a padding row in index 0.
-                    ebd = torch.zeros(
-                            (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                    embd = torch.zeros(
+                            (embd_weight.shape[0] + 1, embd_weight.shape[1]),
                             dtype=torch.float,
                     )
 
-                    ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
-                    ebd.requires_grad = requires_grad
+                    embd.data[1:, :].copy_(torch.FloatTensor(embd_weight))
+                    embd.requires_grad = requires_grad
 
-                    lstm_bos_repr = ebd.data[1]
-                    lstm_eos_repr = ebd.data[2]
+                    lstm_bos_repr = embd.data[1]
+                    lstm_eos_repr = embd.data[2]
 
             else:
                 # TXT format.
@@ -262,33 +262,33 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
                         )
                         loaded_embds.append(vec)
 
-                ebd = torch.zeros(
+                embd = torch.zeros(
                         (loaded_cnt + 1, loaded_dim),
                         dtype=torch.float,
                 )
 
-                ebd.data[1:, :].copy_(torch.FloatTensor(np.concatenate(loaded_embds)))
-                ebd.requires_grad = requires_grad
+                embd.data[1:, :].copy_(torch.FloatTensor(np.concatenate(loaded_embds)))
+                embd.requires_grad = requires_grad
 
-                lstm_bos_repr = ebd.data[1]
-                lstm_eos_repr = ebd.data[2]
+                lstm_bos_repr = embd.data[1]
+                lstm_eos_repr = embd.data[2]
 
         else:
             assert requires_grad
             assert self.options['word_embedding']['cnt'] > 0
 
-            ebd = torch.zeros(
+            embd = torch.zeros(
                     (self.options['word_embedding']['cnt'] + 1,
                      self.options['word_embedding']['dim']),
                     dtype=torch.float,
             )
-            ebd.requires_grad = True
+            embd.requires_grad = True
 
             # `exec_managed_lstm_bos_eos` should be disabled in this case.
             lstm_bos_repr = None
             lstm_eos_repr = None
 
-        return ebd, lstm_bos_repr, lstm_eos_repr
+        return embd, lstm_bos_repr, lstm_eos_repr
 
 
 class ElmoLstmRestorer(RestorerBase):

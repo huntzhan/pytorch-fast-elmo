@@ -109,7 +109,7 @@ ElmoCharacterEncoderImpl::ElmoCharacterEncoderImpl(
 
 torch::Tensor ElmoCharacterEncoderImpl::forward(torch::Tensor inputs) {
   // Of shape `(*, char_embedding_dim, max_chars_per_token)`.
-  auto char_ebds = char_embedding_(inputs).transpose(1, 2);
+  auto char_embds = char_embedding_(inputs).transpose(1, 2);
 
   // Apply CNN.
   std::vector<torch::Tensor> conv_outputs(convolutions_.size());
@@ -117,7 +117,7 @@ torch::Tensor ElmoCharacterEncoderImpl::forward(torch::Tensor inputs) {
       conv_idx < static_cast<int64_t>(convolutions_.size());
       ++conv_idx) {
     // `(*, C_out, L_out)`
-    auto convolved = convolutions_[conv_idx](char_ebds);
+    auto convolved = convolutions_[conv_idx](char_embds);
     // `(*, C_out)`
     convolved = std::get<0>(torch::max(convolved, -1));  // NOLINT
     convolved = activation_(convolved);

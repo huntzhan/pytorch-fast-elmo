@@ -33,7 +33,7 @@ def test_cache_char_cnn_vocab(tmpdir):
     vocab_path = tmpdir.join("vocab.txt")
     vocab_path.write('\n'.join(vocab))
 
-    embedding_path = tmpdir.join("ebd.txt")
+    embedding_path = tmpdir.join("embd.txt")
 
     utils.cache_char_cnn_vocab(
             vocab_path.realpath(),
@@ -44,7 +44,7 @@ def test_cache_char_cnn_vocab(tmpdir):
             max_characters_per_token=15,
     )
 
-    fast_word_ebd = FastElmoBase(
+    fast_word_embd = FastElmoBase(
             ELMO_OPTIONS_FILE,
             None,
             disable_word_embedding=False,
@@ -64,8 +64,8 @@ def test_cache_char_cnn_vocab(tmpdir):
             disable_scalar_mix=True,
     )
 
-    ebd_repr = fast_word_ebd.exec_word_embedding(
-            fast_word_ebd.pack_inputs(
+    embd_repr = fast_word_embd.exec_word_embedding(
+            fast_word_embd.pack_inputs(
                     utils.batch_to_word_ids(
                             [['ELMo', 'helps', '!!!UNK!!!']],
                             utils.load_and_build_vocab2id(vocab_path.realpath()),
@@ -78,10 +78,10 @@ def test_cache_char_cnn_vocab(tmpdir):
                     )))
 
     np.testing.assert_array_almost_equal(
-            ebd_repr.data.numpy(),
+            embd_repr.data.numpy(),
             char_cnn_repr.data.numpy(),
     )
-    np.testing.assert_array_equal(ebd_repr.batch_sizes.numpy(), char_cnn_repr.batch_sizes.numpy())
+    np.testing.assert_array_equal(embd_repr.batch_sizes.numpy(), char_cnn_repr.batch_sizes.numpy())
 
 
 def test_sort_batch_by_length():

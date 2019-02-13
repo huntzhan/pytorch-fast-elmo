@@ -263,11 +263,11 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
         if not self.disable_word_embedding \
                 and self.word_embedding_weight.requires_grad:
-            word_ebd_param_name = 'word_embedding'
-            if override and hasattr(self, word_ebd_param_name):
-                delattr(self, word_ebd_param_name)
+            word_embd_param_name = 'word_embedding'
+            if override and hasattr(self, word_embd_param_name):
+                delattr(self, word_embd_param_name)
             self.register_parameter(
-                    word_ebd_param_name,
+                    word_embd_param_name,
                     torch.nn.Parameter(self.word_embedding_weight, requires_grad=True),
             )
 

@@ -29,7 +29,7 @@ ELMO_OPTIONS_FILE = join(FIXTURES_FODLER, 'options.json')
 ELMO_WEIGHT_FILE = join(FIXTURES_FODLER, 'lm_weights.hdf5')
 
 CACHE_VOCAB_FILE = join(FIXTURES_FODLER, 'vocab.txt')
-CACHE_EBD_FILE = join(FIXTURES_FODLER, 'lm_ebd.txt')
+CACHE_EMBD_FILE = join(FIXTURES_FODLER, 'lm_embd.txt')
 
 
 def test_elmo_character_encoder_simple():
@@ -397,19 +397,19 @@ def test_fast_elmo_word_embedding():
             ELMO_WEIGHT_FILE,
     )
 
-    fast_word_ebd = FastElmoWordEmbedding(
+    fast_word_embd = FastElmoWordEmbedding(
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
-            word_embedding_weight_file=CACHE_EBD_FILE,
+            word_embedding_weight_file=CACHE_EMBD_FILE,
     )
 
     # Test BOS/EOS & other words.
     words = vocab
 
-    ebd_repr = fast_word_ebd(utils.batch_to_word_ids([words], utils.build_vocab2id(vocab)))
+    embd_repr = fast_word_embd(utils.batch_to_word_ids([words], utils.build_vocab2id(vocab)))
     char_cnn_repr = fast_char_cnn(utils.batch_to_char_ids([words]))
 
     np.testing.assert_array_almost_equal(
-            ebd_repr['elmo_representations'][0].data.numpy(),
+            embd_repr['elmo_representations'][0].data.numpy(),
             char_cnn_repr['elmo_representations'][0].data.numpy(),
     )
