@@ -29,7 +29,7 @@ ELMO_OPTIONS_FILE = join(FIXTURES_FODLER, 'options.json')
 ELMO_WEIGHT_FILE = join(FIXTURES_FODLER, 'lm_weights.hdf5')
 
 CACHE_VOCAB_FILE = join(FIXTURES_FODLER, 'vocab.txt')
-CACHE_EBD_FILE = join(FIXTURES_FODLER, 'lm_ebd.hdf5')
+CACHE_EBD_FILE = join(FIXTURES_FODLER, 'lm_ebd.txt')
 
 
 def test_elmo_character_encoder_simple():

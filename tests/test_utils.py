@@ -33,13 +33,13 @@ def test_cache_char_cnn_vocab(tmpdir):
     vocab_path = tmpdir.join("vocab.txt")
     vocab_path.write('\n'.join(vocab))
 
-    embedding_path = tmpdir.join("ebd.hdf5")
+    embedding_path = tmpdir.join("ebd.txt")
 
     utils.cache_char_cnn_vocab(
             vocab_path.realpath(),
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
-            embedding_path.realpath(),
+            str(embedding_path.realpath()),
             batch_size=2,
             max_characters_per_token=15,
     )
@@ -48,7 +48,7 @@ def test_cache_char_cnn_vocab(tmpdir):
             ELMO_OPTIONS_FILE,
             None,
             disable_word_embedding=False,
-            word_embedding_weight_file=embedding_path.realpath(),
+            word_embedding_weight_file=str(embedding_path.realpath()),
             # Disable all other components.
             disable_char_cnn=True,
             disable_forward_lstm=True,

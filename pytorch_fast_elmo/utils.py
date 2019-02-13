@@ -223,7 +223,7 @@ def cache_char_cnn_vocab(
         vocab_txt: str,
         options_file: str,
         weight_file: str,
-        hdf5_out: str,
+        txt_out: str,
         max_characters_per_token: int = ElmoCharacterIdsConst.MAX_WORD_LENGTH,
         cuda_device: int = -1,
         batch_size: int = 256,
@@ -232,7 +232,7 @@ def cache_char_cnn_vocab(
     1. Load vocab.
     2. Feed vocab to Char CNN.
     3. Feed BOS/EOS to Char CNN.
-    4. Dump reprs to HDF5. (will be loaded by `ElmoWordEmbeddingRestorer`).
+    4. Dump reprs to txt. (will be loaded by `ElmoWordEmbeddingRestorer`).
     """
     # 1.
     vocab = load_vocab(vocab_txt)
@@ -283,9 +283,13 @@ def cache_char_cnn_vocab(
     embedding_weight[1] = lstm_eos_weight
 
     # 4.
-    with h5py.File(hdf5_out, 'w') as fout:
-        dset = fout.create_dataset('embedding', embedding_weight.shape, dtype='float32')
-        dset[...] = embedding_weight
+    with open(txt_out, 'w') as fout:
+        for idx, token in enumerate(vocab):
+            embd = embedding_weight[idx]
+            # [token] [dim1] [dim2]...
+            embd_txt = ' '.join(map(str, embd))
+            line = f'{token} {embd_txt}\n'
+            fout.write(line)
 
 
 def sort_batch_by_length(

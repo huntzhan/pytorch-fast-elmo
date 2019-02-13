@@ -210,19 +210,64 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         if self.weight_file:
             assert self.options is None
 
-            with h5py.File(self.weight_file, 'r') as fin:
-                assert 'embedding' in fin
+            if self.weight_file.endswith(('.h5', '.hdf5')):
+                # HDF5 format.
+                with h5py.File(self.weight_file, 'r') as fin:
+                    assert 'embedding' in fin
 
-                ebd_weight = fin['embedding'][...]
+                    ebd_weight = fin['embedding'][...]
 
-                # Since bilm-tf doesn't include padding,
-                # we need to prepend a padding row in index 0.
+                    # Since bilm-tf doesn't include padding,
+                    # we need to prepend a padding row in index 0.
+                    ebd = torch.zeros(
+                            (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                            dtype=torch.float,
+                    )
+
+                    ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
+                    ebd.requires_grad = requires_grad
+
+                    lstm_bos_repr = ebd.data[1]
+                    lstm_eos_repr = ebd.data[2]
+
+            else:
+                # TXT format.
+                loaded_cnt = 0
+                loaded_dim = 0
+                loaded_embds = []
+                with open(self.weight_file) as fin:
+                    for idx, line in enumerate(fin):
+                        fields = line.split()
+                        if not fields:
+                            continue
+
+                        # L0: <cnt> <dim>
+                        if idx == 0 and len(fields) == 2:
+                            loaded_dim = int(fields[1])
+                            continue
+
+                        token = fields[0]
+                        embd = fields[1:]
+                        loaded_cnt += 1
+
+                        if loaded_dim == 0:
+                            loaded_dim = len(embd)
+                        elif loaded_dim != len(embd):
+                            raise ValueError(f'Dimension not match on L{idx}: {token}, '
+                                             f'should be {loaded_dim}-D.')
+
+                        vec = np.expand_dims(
+                                np.asarray(list(map(float, embd))),
+                                0,
+                        )
+                        loaded_embds.append(vec)
+
                 ebd = torch.zeros(
-                        (ebd_weight.shape[0] + 1, ebd_weight.shape[1]),
+                        (loaded_cnt + 1, loaded_dim),
                         dtype=torch.float,
                 )
 
-                ebd.data[1:, :].copy_(torch.FloatTensor(ebd_weight))
+                ebd.data[1:, :].copy_(torch.FloatTensor(np.concatenate(loaded_embds)))
                 ebd.requires_grad = requires_grad
 
                 lstm_bos_repr = ebd.data[1]
