@@ -111,8 +111,11 @@ CLI commands:
 
 .. code-block:: bash
 
-    # For exporting the Char CNN representation.
+    # Cache the Char CNN representation.
     fast-elmo cache-char-cnn ./vocab.txt ./options.json ./lm_weights.hdf5 ./lm_embd.hdf5
+
+    # Export word embedding.
+    fast-elmo export-word-embd ./vocab.txt ./no-char-cnn.hdf5 ./embd.txt
 
 
 Credits

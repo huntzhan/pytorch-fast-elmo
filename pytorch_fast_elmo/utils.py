@@ -2,9 +2,9 @@ from typing import List, Tuple, Iterable, Dict, Optional
 
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
-import h5py
+import numpy as np
 
-from pytorch_fast_elmo.restore import ElmoCharacterEncoderRestorer
+from pytorch_fast_elmo.restore import ElmoCharacterEncoderRestorer, ElmoWordEmbeddingRestorer
 from _pytorch_fast_elmo import ElmoCharacterEncoder  # pylint: disable=no-name-in-module
 
 
@@ -219,6 +219,48 @@ def get_bos_eos_token_repr(
     return bos_eos_reprs[0], bos_eos_reprs[1]
 
 
+def sort_batch_by_length(
+        batch: torch.Tensor,
+        lengths: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Similar to AllenNLP.
+
+    `batch` of shape `(batch_size, max_timesteps, *)` should be zero padded.
+    `sequence_lengths` of shape `(batch_size,)`
+
+    Returns (sorted_batch, restoration_index)
+    """
+    if lengths is None:
+        lengths = get_lengths_of_zero_padded_batch(batch)
+    _, permutation_index = lengths.sort(0, descending=True)
+    sorted_batch = batch.index_select(0, permutation_index)
+    _, restoration_index = permutation_index.sort(0, descending=False)
+    return sorted_batch, permutation_index, restoration_index
+
+
+def export_word_embedding_to_txt(
+        vocab: List[str],
+        embedding_weight: np.array,
+        txt_out: str,
+) -> None:
+    if embedding_weight.shape[0] != len(vocab):
+        raise ValueError(
+                'Size not match. '
+                f'embd({embedding_weight.shape[0]}) '
+                '!= '
+                f'vocab({len(vocab)})'
+        )
+
+    with open(txt_out, 'w') as fout:
+        for idx, token in enumerate(vocab):
+            embd = embedding_weight[idx]
+            # [token] [dim1] [dim2]...
+            embd_txt = ' '.join(map(str, embd))
+            line = f'{token} {embd_txt}\n'
+            fout.write(line)
+
+
 def cache_char_cnn_vocab(
         vocab_txt: str,
         options_file: str,
@@ -283,30 +325,18 @@ def cache_char_cnn_vocab(
     embedding_weight[1] = lstm_eos_weight
 
     # 4.
-    with open(txt_out, 'w') as fout:
-        for idx, token in enumerate(vocab):
-            embd = embedding_weight[idx]
-            # [token] [dim1] [dim2]...
-            embd_txt = ' '.join(map(str, embd))
-            line = f'{token} {embd_txt}\n'
-            fout.write(line)
+    export_word_embedding_to_txt(vocab, embedding_weight, txt_out)
 
 
-def sort_batch_by_length(
-        batch: torch.Tensor,
-        lengths: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Similar to AllenNLP.
+def export_word_embd(
+        vocab_txt: str,
+        weight_file: str,
+        txt_out: str,
+) -> None:
+    vocab = load_vocab(vocab_txt)
+    word_embedding_restorer = ElmoWordEmbeddingRestorer(None, weight_file)
+    embedding_weight, _, _ = word_embedding_restorer.restore(requires_grad=False)
+    # remove padding.
+    embedding_weight = embedding_weight.data[1:, :].numpy()
 
-    `batch` of shape `(batch_size, max_timesteps, *)` should be zero padded.
-    `sequence_lengths` of shape `(batch_size,)`
-
-    Returns (sorted_batch, restoration_index)
-    """
-    if lengths is None:
-        lengths = get_lengths_of_zero_padded_batch(batch)
-    _, permutation_index = lengths.sort(0, descending=True)
-    sorted_batch = batch.index_select(0, permutation_index)
-    _, restoration_index = permutation_index.sort(0, descending=False)
-    return sorted_batch, permutation_index, restoration_index
+    export_word_embedding_to_txt(vocab, embedding_weight, txt_out)

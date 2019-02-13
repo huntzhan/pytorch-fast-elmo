@@ -29,6 +29,18 @@ class Main:
                 batch_size,
         )
 
+    def export_word_embd(  # type: ignore
+            self,
+            vocab_txt,
+            weight_file,
+            txt_out,
+    ):
+        utils.export_word_embd(
+                vocab_txt,
+                weight_file,
+                txt_out,
+        )
+
     def profile_full(  # type: ignore
             self,
             mode,
