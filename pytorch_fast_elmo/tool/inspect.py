@@ -78,17 +78,15 @@ def sample_sentence_no_char_cnn(
             next_token_id = np.random.choice(indices, p=probs / probs.sum()) + 1
             next_token = id2vocab[next_token_id]
 
+            info_probs = sorted(
+                    dict(zip(map(id2vocab.get, indices + 1), probs.tolist())).items(),
+                    key=lambda p: p[1],
+                    reverse=True,
+            )
             info.append({
-                    'cur':
-                    cur_token,
-                    'next':
-                    next_token,
-                    'probs':
-                    sorted(
-                            dict(zip(map(id2vocab.get, indices + 1), probs.tolist())).items(),
-                            key=lambda p: p[1],
-                            reverse=True,
-                    ),
+                    'cur': cur_token,
+                    'next': next_token,
+                    'probs': info_probs,
             })
 
             cur_token = next_token
