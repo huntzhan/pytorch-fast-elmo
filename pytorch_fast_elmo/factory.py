@@ -5,6 +5,7 @@ Follows AllenNLP.
 
 from typing import Dict, Tuple, Any, Optional, List
 import json
+import math
 
 import torch
 import h5py
@@ -27,7 +28,7 @@ def freeze_parameters(named_parameters: Dict[str, torch.Tensor]) -> None:
         param.requires_grad = False
 
 
-class RestorerBase:
+class FactoryBase:
 
     def __init__(
             self,
@@ -38,7 +39,7 @@ class RestorerBase:
         self.weight_file = weight_file
 
 
-class ElmoCharacterEncoderRestorer(RestorerBase):
+class ElmoCharacterEncoderFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
@@ -48,9 +49,9 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
             activation: str,
             num_highway_layers: int,
             output_dim: int,
-    ) -> 'ElmoCharacterEncoderRestorer':
-        restorer = ElmoCharacterEncoderRestorer(None, None)
-        restorer.options = {
+    ) -> 'ElmoCharacterEncoderFactory':
+        factory = ElmoCharacterEncoderFactory(None, None)
+        factory.options = {
                 'n_characters': char_embedding_cnt,
                 'char_cnn': {
                         'embedding': {
@@ -64,9 +65,9 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
                         'projection_dim': output_dim
                 },
         }
-        return restorer
+        return factory
 
-    def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
+    def create(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         assert self.options and 'char_cnn' in self.options
 
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
@@ -184,23 +185,21 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
         self.named_parameters[bias_name].data.copy_(torch.FloatTensor(bias))
 
 
-class ElmoWordEmbeddingRestorer(RestorerBase):
+class ElmoWordEmbeddingFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
             cnt: int,
             dim: int,
-    ) -> 'ElmoWordEmbeddingRestorer':
-        restorer = ElmoWordEmbeddingRestorer(None, None)
-        restorer.options = {
-                'word_embedding': {
-                        'cnt': cnt,
-                        'dim': dim,
-                },
+    ) -> 'ElmoWordEmbeddingFactory':
+        factory = ElmoWordEmbeddingFactory(None, None)
+        factory.options = {
+                'n_tokens_vocab': cnt,
+                'word_embedding_dim': dim,
         }
-        return restorer
+        return factory
 
-    def restore(
+    def create(
             self,
             requires_grad: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -208,27 +207,12 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         Returns (embedding, lstm_bos, lstm_eos)
         """
         if self.weight_file:
-            assert self.options is None
-
+            # Load `embd_weight` from hdf5 or txt.
             if self.weight_file.endswith(('.h5', '.hdf5')):
                 # HDF5 format.
                 with h5py.File(self.weight_file, 'r') as fin:
                     assert 'embedding' in fin
-
                     embd_weight = fin['embedding'][...]
-
-                    # Since bilm-tf doesn't include padding,
-                    # we need to prepend a padding row in index 0.
-                    embd = torch.zeros(
-                            (embd_weight.shape[0] + 1, embd_weight.shape[1]),
-                            dtype=torch.float,
-                    )
-
-                    embd.data[1:, :].copy_(torch.FloatTensor(embd_weight))
-                    embd.requires_grad = requires_grad
-
-                    lstm_bos_repr = embd.data[1]
-                    lstm_eos_repr = embd.data[2]
 
             else:
                 # TXT format.
@@ -262,26 +246,41 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
                         )
                         loaded_embds.append(vec)
 
-                embd = torch.zeros(
-                        (loaded_cnt + 1, loaded_dim),
-                        dtype=torch.float,
-                )
+                embd_weight = np.concatenate(loaded_embds)
 
-                embd.data[1:, :].copy_(torch.FloatTensor(np.concatenate(loaded_embds)))
-                embd.requires_grad = requires_grad
+            # Since bilm-tf doesn't include padding,
+            # we need to prepend a padding row in index 0.
+            self.word_embedding_cnt = embd_weight.shape[0]
+            self.word_embedding_dim = embd_weight.shape[1]
 
-                lstm_bos_repr = embd.data[1]
-                lstm_eos_repr = embd.data[2]
+            # Check with options if `n_tokens_vocab` exists.
+            if 'n_tokens_vocab' in self.options \
+                    and self.options['n_tokens_vocab'] != self.word_embedding_cnt:
+                raise ValueError('n_tokens_vocab not match')
+
+            embd = torch.zeros(
+                    (self.word_embedding_cnt + 1, self.word_embedding_dim),
+                    dtype=torch.float,
+            )
+
+            embd.data[1:, :].copy_(torch.FloatTensor(embd_weight))
+            embd.requires_grad = requires_grad
+
+            lstm_bos_repr = embd.data[1]
+            lstm_eos_repr = embd.data[2]
 
         else:
             assert requires_grad
-            assert self.options['word_embedding']['cnt'] > 0
+            assert self.options['n_tokens_vocab'] > 0
+
+            self.word_embedding_cnt = self.options['n_tokens_vocab']
+            self.word_embedding_dim = self.options['word_embedding_dim']
 
             embd = torch.zeros(
-                    (self.options['word_embedding']['cnt'] + 1,
-                     self.options['word_embedding']['dim']),
+                    (self.word_embedding_cnt + 1, self.word_embedding_dim),
                     dtype=torch.float,
             )
+            torch.nn.init.normal_(embd)
             embd.requires_grad = True
 
             # `exec_managed_lstm_bos_eos` should be disabled in this case.
@@ -291,7 +290,7 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         return embd, lstm_bos_repr, lstm_eos_repr
 
 
-class ElmoLstmRestorer(RestorerBase):
+class ElmoLstmFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
@@ -302,9 +301,9 @@ class ElmoLstmRestorer(RestorerBase):
             cell_clip: float,
             proj_clip: float,
             truncated_bptt: int,
-    ) -> 'ElmoLstmRestorer':
-        restorer = ElmoLstmRestorer(None, None)
-        restorer.options = {
+    ) -> 'ElmoLstmFactory':
+        factory = ElmoLstmFactory(None, None)
+        factory.options = {
                 'lstm': {
                         'n_layers': num_layers,
                         'projection_dim': input_size,
@@ -315,9 +314,9 @@ class ElmoLstmRestorer(RestorerBase):
                 },
                 'unroll_steps': truncated_bptt,
         }
-        return restorer
+        return factory
 
-    def restore(
+    def create(
             self,
             enable_forward: bool = False,
             forward_requires_grad: bool = False,
@@ -444,3 +443,71 @@ class ElmoLstmRestorer(RestorerBase):
 
         self.named_parameters[prefix + '.proj_linearity_weight'].data.copy_(
                 torch.FloatTensor(proj_weights),)
+
+
+class ElmoVocabProjectionFactory(FactoryBase):
+
+    @staticmethod
+    def from_scratch(
+            input_size: int,
+            proj_size: int,
+    ) -> 'ElmoVocabProjectionFactory':
+        factory = ElmoVocabProjectionFactory(None, None)
+        factory.options = {
+                'lstm': {
+                        'projection_dim': input_size
+                },
+                'n_tokens_vocab': proj_size,
+        }
+        return factory
+
+    def create(
+            self,
+            requires_grad: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns (weight, bias) for affine transformation.
+        """
+        assert self.options \
+                and 'n_tokens_vocab' in self.options \
+                and 'lstm' in self.options
+
+        self.input_size = self.options['lstm']['projection_dim']
+        self.proj_size = self.options['n_tokens_vocab']
+        assert self.input_size > 0 and self.proj_size > 0
+
+        # Note: no padding zero.
+        weight = torch.zeros(
+                (self.proj_size, self.input_size),
+                dtype=torch.float,
+        )
+        bias = torch.zeros(
+                (self.proj_size,),
+                dtype=torch.float,
+        )
+
+        if self.weight_file:
+            with h5py.File(self.weight_file, 'r') as fin:
+                if 'softmax' not in fin:
+                    raise ValueError('softmax not in weight file.')
+                loaded_weight = fin['softmax']['W'][...]
+                loaded_bias = fin['softmax']['b'][...]
+
+            weight.data.copy_(torch.FloatTensor(loaded_weight))
+            weight.requires_grad = requires_grad
+
+            bias.data.copy_(torch.FloatTensor(loaded_bias))
+            bias.requires_grad = requires_grad
+
+        else:
+            assert requires_grad
+            # init.
+            torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+            weight.requires_grad = True
+
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(weight)  # pylint: disable=protected-access
+            bound = 1 / math.sqrt(fan_in)
+            torch.nn.init.uniform_(bias, -bound, bound)
+            bias.requires_grad = True
+
+        return weight, bias

@@ -8,10 +8,11 @@ from typing import List, Tuple, Optional, Dict, Union, Any, Set
 import torch
 from torch.nn.utils.rnn import PackedSequence
 
-from pytorch_fast_elmo.restore import (
-        ElmoCharacterEncoderRestorer,
-        ElmoWordEmbeddingRestorer,
-        ElmoLstmRestorer,
+from pytorch_fast_elmo.factory import (
+        ElmoCharacterEncoderFactory,
+        ElmoWordEmbeddingFactory,
+        ElmoLstmFactory,
+        ElmoVocabProjectionFactory,
 )
 from pytorch_fast_elmo import utils
 from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
@@ -60,6 +61,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     }
     EXEC_PARAMS = {
             'exec_managed_lstm_bos_eos',
+            'exec_managed_lstm_reset_states',
             'exec_sort_batch',
     }
     COMMON_PARAMS = SCALAR_MIX_PARAMS | EXEC_PARAMS
@@ -93,7 +95,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             scalar_mix_parameters: Optional[List[float]] = None,
             do_layer_norm: bool = False,
 
-            # Controls the behavior of restorer.
+            # Controls the behavior of factory.
             # Char CNN.
             disable_char_cnn: bool = False,
             char_cnn_requires_grad: bool = False,
@@ -128,6 +130,12 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             lstm_proj_clip: float = 3.0,
             lstm_truncated_bptt: int = 20,
 
+            # The final softmax layer.
+            disable_vocab_projection: bool = True,
+            vocab_projection_requires_grad: bool = False,
+            vocab_projection_input_size: int = 0,
+            vocab_projection_proj_size: int = 0,
+
             # Provide the BOS/EOS representations of shape `(projection_dim,)`
             # if char CNN is disabled.
             lstm_bos_repr: Optional[torch.Tensor] = None,
@@ -140,6 +148,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         self.disable_forward_lstm = disable_forward_lstm
         self.disable_backward_lstm = disable_backward_lstm
         self.disable_scalar_mix = disable_scalar_mix
+        self.disable_vocab_projection = disable_vocab_projection
 
         self.exec_managed_lstm_bos_eos = exec_managed_lstm_bos_eos
         self.exec_managed_lstm_reset_states = exec_managed_lstm_reset_states
@@ -147,13 +156,13 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
         # Char CNN.
         if options_file:
-            self.char_cnn_restorer = ElmoCharacterEncoderRestorer(
+            self.char_cnn_factory = ElmoCharacterEncoderFactory(
                     options_file,
                     weight_file,
             )
         else:
             # From scratch.
-            self.char_cnn_restorer = ElmoCharacterEncoderRestorer.from_scratch(
+            self.char_cnn_factory = ElmoCharacterEncoderFactory.from_scratch(
                     char_embedding_cnt=char_cnn_char_embedding_cnt,
                     char_embedding_dim=char_cnn_char_embedding_dim,
                     filters=char_cnn_filters,
@@ -163,17 +172,17 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not disable_char_cnn:
-            self.char_cnn = self.char_cnn_restorer.restore(requires_grad=char_cnn_requires_grad)
+            self.char_cnn = self.char_cnn_factory.create(requires_grad=char_cnn_requires_grad)
 
         # Word Embedding.
         if options_file:
-            self.word_embedding_restorer = ElmoWordEmbeddingRestorer(
-                    None,
+            self.word_embedding_factory = ElmoWordEmbeddingFactory(
+                    options_file,
                     word_embedding_weight_file or weight_file,
             )
         else:
             # From scratch.
-            self.word_embedding_restorer = ElmoWordEmbeddingRestorer.from_scratch(
+            self.word_embedding_factory = ElmoWordEmbeddingFactory.from_scratch(
                     cnt=word_embedding_cnt,
                     dim=word_embedding_dim,
             )
@@ -183,17 +192,17 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not disable_word_embedding:
             # Not a cpp extension.
             self.word_embedding_weight, lstm_bos_repr, lstm_eos_repr = \
-                    self.word_embedding_restorer.restore(requires_grad=word_embedding_requires_grad)
+                    self.word_embedding_factory.create(requires_grad=word_embedding_requires_grad)
 
         # LSTM.
         if options_file:
-            self.lstm_restorer = ElmoLstmRestorer(
+            self.lstm_factory = ElmoLstmFactory(
                     options_file,
                     weight_file,
             )
         else:
             # From scratch.
-            self.lstm_restorer = ElmoLstmRestorer.from_scratch(
+            self.lstm_factory = ElmoLstmFactory.from_scratch(
                     num_layers=lstm_num_layers,
                     input_size=lstm_input_size,
                     hidden_size=lstm_hidden_size,
@@ -204,7 +213,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not (disable_forward_lstm and disable_backward_lstm):
-            self.forward_lstm, self.backward_lstm = self.lstm_restorer.restore(
+            self.forward_lstm, self.backward_lstm = self.lstm_factory.create(
                     enable_forward=not disable_forward_lstm,
                     forward_requires_grad=forward_lstm_requires_grad,
                     enable_backward=not disable_backward_lstm,
@@ -221,9 +230,25 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
                 else:
                     self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
-                            self.char_cnn_restorer,
+                            self.char_cnn_factory,
                             self.char_cnn,
                     )
+
+        # Vocabulary projection.
+        if options_file:
+            self.vocab_projection_factory = ElmoVocabProjectionFactory(
+                    options_file,
+                    weight_file,
+            )
+        else:
+            self.vocab_projection_factory = ElmoVocabProjectionFactory.from_scratch(
+                    vocab_projection_input_size,
+                    vocab_projection_proj_size,
+            )
+
+        if not disable_vocab_projection:
+            self.vocab_projection_weight, self.vocab_projection_bias = \
+                    self.vocab_projection_factory.create(requires_grad=vocab_projection_requires_grad)
 
         # ScalarMix
         if not disable_scalar_mix:
@@ -235,7 +260,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             for _ in range(num_output_representations):
                 scalar_mix = ScalarMix(
                         # char cnn + lstm.
-                        self.lstm_restorer.num_layers + 1,
+                        self.lstm_factory.num_layers + 1,
                         do_layer_norm=do_layer_norm,
                         initial_scalar_parameters=scalar_mix_parameters,
                         trainable=not scalar_mix_parameters,
@@ -525,6 +550,18 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         combined.extend(bilstm_packed)
         return combined
 
+    def exec_vocab_projection(self, context_repr: PackedSequence) -> PackedSequence:
+        """
+        Transform the last layer of LSTM to the probability distributions of vocabulary.
+        """
+        vocab_linear = torch.nn.functional.linear(
+                context_repr.data,
+                self.vocab_projection_weight,
+                self.vocab_projection_bias,
+        )
+        vocab_probs = torch.nn.functional.softmax(vocab_linear, dim=-1)
+        return PackedSequence(vocab_probs, context_repr.batch_sizes)
+
     def exec_scalar_mix(self, packed_sequences: List[PackedSequence]) -> List[PackedSequence]:
         """
         Scalar Mix.
@@ -561,20 +598,20 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     ) -> PackedSequence:
         return utils.pack_inputs(inputs, lengths=lengths)
 
-    def unpack_outputs(
+    def unpack_output(
             self,
-            inputs: PackedSequence,
+            output: PackedSequence,
     ) -> torch.Tensor:
-        return utils.unpack_outputs(inputs)
+        return utils.unpack_outputs(output)
 
-    def unpack_mixed_reprs(
+    def unpack_outputs(
             self,
             mixed_reprs: List[PackedSequence],
     ) -> List[torch.Tensor]:
         """
         Unpack the outputs of scalar mixtures.
         """
-        return [self.unpack_outputs(mixed_repr) for mixed_repr in mixed_reprs]
+        return [self.unpack_output(mixed_repr) for mixed_repr in mixed_reprs]
 
     def to_allennlp_elmo_output_format(
             self,
@@ -601,11 +638,11 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
     def postprocess_outputs(
             self,
-            unpacked_mixed_reprs: List[torch.Tensor],
+            unpacked_tensors: List[torch.Tensor],
             restoration_index: Optional[torch.Tensor],
             inputs: torch.Tensor,
             original_lengths: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
         mask = utils.generate_mask_from_lengths(
                 inputs.shape[0],
                 inputs.shape[1],
@@ -613,12 +650,41 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         )
         if self.exec_sort_batch:
             assert restoration_index is not None
-            unpacked_mixed_reprs = [
-                    tensor.index_select(0, restoration_index) for tensor in unpacked_mixed_reprs
+            unpacked_tensors = [
+                    tensor.index_select(0, restoration_index) for tensor in unpacked_tensors
             ]
             self.exec_bilstm_permutate_states(restoration_index)
 
-        return unpacked_mixed_reprs, mask
+        return unpacked_tensors, mask
+
+    def forward_with_sorting_and_packing(
+            self,
+            inputs: torch.Tensor,
+    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        inputs, lengths, original_lengths, restoration_index = \
+                self.preprocess_inputs(inputs)
+
+        packed_inputs = self.pack_inputs(inputs, lengths)
+        packed_outputs = self.execute(packed_inputs)
+
+        unpacked_outputs = self.unpack_outputs(packed_outputs)
+        unpacked_outputs, mask = self.postprocess_outputs(
+                unpacked_outputs,
+                restoration_index,
+                inputs,
+                original_lengths,
+        )
+        return unpacked_outputs, mask
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        raise NotImplementedError()
+
+    def forward_like_allennlp(
+            self,
+            inputs: torch.Tensor,
+    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
+        outputs, mask = self.forward_with_sorting_and_packing(inputs)
+        return self.to_allennlp_elmo_output_format(outputs, mask)
 
     def forward(self):  # type: ignore
         raise NotImplementedError()
@@ -640,6 +706,11 @@ class FastElmo(FastElmoBase):
                 }, kwargs)
         super().__init__(options_file, weight_file, **kwargs)
 
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_char_cnn(inputs)
+        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
+        return mixed_reprs
+
     def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
@@ -649,21 +720,7 @@ class FastElmo(FastElmoBase):
 
         `inputs` of shape `(batch_size, max_timesteps, max_characters_per_token)
         """
-        inputs, lengths, original_lengths, restoration_index = \
-                self.preprocess_inputs(inputs)
-
-        packed_inputs = self.pack_inputs(inputs, lengths)
-        token_repr = self.exec_char_cnn(packed_inputs)
-        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
-        unpacked_mixed_reprs = self.unpack_mixed_reprs(mixed_reprs)
-
-        unpacked_mixed_reprs, mask = self.postprocess_outputs(
-                unpacked_mixed_reprs,
-                restoration_index,
-                inputs,
-                original_lengths,
-        )
-        return self.to_allennlp_elmo_output_format(unpacked_mixed_reprs, mask)
+        return self.forward_like_allennlp(inputs)
 
 
 class FastElmoWordEmbedding(FastElmoBase):
@@ -686,6 +743,11 @@ class FastElmoWordEmbedding(FastElmoBase):
         kwargs['disable_word_embedding'] = False
         super().__init__(options_file, weight_file, **kwargs)
 
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_word_embedding(inputs)
+        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
+        return mixed_reprs
+
     def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
@@ -693,18 +755,60 @@ class FastElmoWordEmbedding(FastElmoBase):
         """
         `inputs` of shape `(batch_size, max_timesteps)
         """
-        inputs, lengths, original_lengths, restoration_index = \
-                self.preprocess_inputs(inputs)
+        return self.forward_like_allennlp(inputs)
 
-        packed_inputs = self.pack_inputs(inputs, lengths)
-        token_repr = self.exec_word_embedding(packed_inputs)
-        mixed_reprs = self.exec_bilstm_and_scalar_mix(token_repr)
-        unpacked_mixed_reprs = self.unpack_mixed_reprs(mixed_reprs)
 
-        unpacked_mixed_reprs, mask = self.postprocess_outputs(
-                unpacked_mixed_reprs,
-                restoration_index,
-                inputs,
-                original_lengths,
-        )
-        return self.to_allennlp_elmo_output_format(unpacked_mixed_reprs, mask)
+class FastElmoVocabDistribBase(FastElmoBase):  # pylint: disable=abstract-method
+
+    def exec_vocab_prob_distrib(self, token_repr: PackedSequence) -> List[PackedSequence]:
+        fwd_lstm_last, bwd_lstm_last = self.exec_bilstm(token_repr)[-1]
+
+        fwd_vocab_distrib = self.exec_vocab_projection(fwd_lstm_last)
+        bwd_vocab_distrib = self.exec_vocab_projection(bwd_lstm_last)
+        return [fwd_vocab_distrib, bwd_vocab_distrib]
+
+    def forward(  # type: ignore
+            self,
+            inputs: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        (fwd_vocab_distrib, bwd_vocab_distrib), mask = \
+                self.forward_with_sorting_and_packing(inputs)
+        return fwd_vocab_distrib, bwd_vocab_distrib, mask
+
+
+class FastElmoVocabDistrib(FastElmoVocabDistribBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(set(), kwargs)
+        kwargs['disable_vocab_projection'] = False
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_char_cnn(inputs)
+        return self.exec_vocab_prob_distrib(token_repr)
+
+
+class FastElmoWordEmbeddingVocabDistrib(FastElmoVocabDistribBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid({'word_embedding_weight_file'}, kwargs)
+        kwargs['disable_char_cnn'] = True
+        kwargs['disable_word_embedding'] = False
+        kwargs['disable_vocab_projection'] = False
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_word_embedding(inputs)
+        return self.exec_vocab_prob_distrib(token_repr)

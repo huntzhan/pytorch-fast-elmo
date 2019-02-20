@@ -17,8 +17,8 @@ from allennlp.modules.elmo import _ElmoCharacterEncoder, _ElmoBiLm, Elmo
 
 from pytorch_fast_elmo import (
         ElmoCharacterEncoder,
-        ElmoCharacterEncoderRestorer,
-        ElmoLstmRestorer,
+        ElmoCharacterEncoderFactory,
+        ElmoLstmFactory,
         FastElmo,
         FastElmoWordEmbedding,
         utils,
@@ -79,10 +79,10 @@ def test_elmo_character_encoder_with_allennlp():
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
     )
-    embedder = ElmoCharacterEncoderRestorer(
+    embedder = ElmoCharacterEncoderFactory(
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
-    ).restore()
+    ).create()
 
     allennlp_parameters = [
             '_char_embedding_weights',
@@ -174,20 +174,20 @@ def test_elmo_character_encoder_with_allennlp():
     )
 
 
-def test_elmo_lstm_restorer_simple():
+def test_elmo_lstm_factory_simple():
     allennlp_elmo_bilm = _ElmoBiLm(
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
     )
 
-    embedder = ElmoCharacterEncoderRestorer(
+    embedder = ElmoCharacterEncoderFactory(
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
-    ).restore()
-    fwd_lstm, bwd_lstm = ElmoLstmRestorer(
+    ).create()
+    fwd_lstm, bwd_lstm = ElmoLstmFactory(
             ELMO_OPTIONS_FILE,
             ELMO_WEIGHT_FILE,
-    ).restore(
+    ).create(
             enable_forward=True, enable_backward=True)
 
     sentences_1 = [
