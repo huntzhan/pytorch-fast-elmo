@@ -219,8 +219,10 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
 
                     # Since bilm-tf doesn't include padding,
                     # we need to prepend a padding row in index 0.
+                    self.word_embedding_cnt = embd_weight.shape[0]
+                    self.word_embedding_dim = embd_weight.shape[1]
                     embd = torch.zeros(
-                            (embd_weight.shape[0] + 1, embd_weight.shape[1]),
+                            (self.word_embedding_cnt + 1, self.word_embedding_dim),
                             dtype=torch.float,
                     )
 
@@ -262,8 +264,10 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
                         )
                         loaded_embds.append(vec)
 
+                self.word_embedding_cnt = loaded_cnt
+                self.word_embedding_dim = loaded_dim
                 embd = torch.zeros(
-                        (loaded_cnt + 1, loaded_dim),
+                        (self.word_embedding_cnt + 1, self.word_embedding_dim),
                         dtype=torch.float,
                 )
 
@@ -277,9 +281,10 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
             assert requires_grad
             assert self.options['word_embedding']['cnt'] > 0
 
+            self.word_embedding_cnt = self.options['word_embedding']['cnt']
+            self.word_embedding_dim = self.options['word_embedding']['dim']
             embd = torch.zeros(
-                    (self.options['word_embedding']['cnt'] + 1,
-                     self.options['word_embedding']['dim']),
+                    (self.word_embedding_cnt + 1, self.word_embedding_dim),
                     dtype=torch.float,
             )
             embd.requires_grad = True
