@@ -193,10 +193,8 @@ class ElmoWordEmbeddingFactory(FactoryBase):
     ) -> 'ElmoWordEmbeddingFactory':
         factory = ElmoWordEmbeddingFactory(None, None)
         factory.options = {
-                'word_embedding': {
-                        'cnt': cnt,
-                        'dim': dim,
-                },
+                'n_tokens_vocab': cnt,
+                'word_embedding_dim': dim,
         }
         return factory
 
@@ -208,29 +206,12 @@ class ElmoWordEmbeddingFactory(FactoryBase):
         Returns (embedding, lstm_bos, lstm_eos)
         """
         if self.weight_file:
-            assert self.options is None
-
+            # Load `embd_weight` from hdf5 or txt.
             if self.weight_file.endswith(('.h5', '.hdf5')):
                 # HDF5 format.
                 with h5py.File(self.weight_file, 'r') as fin:
                     assert 'embedding' in fin
-
                     embd_weight = fin['embedding'][...]
-
-                    # Since bilm-tf doesn't include padding,
-                    # we need to prepend a padding row in index 0.
-                    self.word_embedding_cnt = embd_weight.shape[0]
-                    self.word_embedding_dim = embd_weight.shape[1]
-                    embd = torch.zeros(
-                            (self.word_embedding_cnt + 1, self.word_embedding_dim),
-                            dtype=torch.float,
-                    )
-
-                    embd.data[1:, :].copy_(torch.FloatTensor(embd_weight))
-                    embd.requires_grad = requires_grad
-
-                    lstm_bos_repr = embd.data[1]
-                    lstm_eos_repr = embd.data[2]
 
             else:
                 # TXT format.
@@ -264,25 +245,36 @@ class ElmoWordEmbeddingFactory(FactoryBase):
                         )
                         loaded_embds.append(vec)
 
-                self.word_embedding_cnt = loaded_cnt
-                self.word_embedding_dim = loaded_dim
-                embd = torch.zeros(
-                        (self.word_embedding_cnt + 1, self.word_embedding_dim),
-                        dtype=torch.float,
-                )
+                embd_weight = np.concatenate(loaded_embds)
 
-                embd.data[1:, :].copy_(torch.FloatTensor(np.concatenate(loaded_embds)))
-                embd.requires_grad = requires_grad
+            # Since bilm-tf doesn't include padding,
+            # we need to prepend a padding row in index 0.
+            self.word_embedding_cnt = embd_weight.shape[0]
+            self.word_embedding_dim = embd_weight.shape[1]
 
-                lstm_bos_repr = embd.data[1]
-                lstm_eos_repr = embd.data[2]
+            # Check with options if `n_tokens_vocab` exists.
+            if 'n_tokens_vocab' in self.options \
+                    and self.options['n_tokens_vocab'] != self.word_embedding_cnt:
+                raise ValueError('n_tokens_vocab not match')
+
+            embd = torch.zeros(
+                    (self.word_embedding_cnt + 1, self.word_embedding_dim),
+                    dtype=torch.float,
+            )
+
+            embd.data[1:, :].copy_(torch.FloatTensor(embd_weight))
+            embd.requires_grad = requires_grad
+
+            lstm_bos_repr = embd.data[1]
+            lstm_eos_repr = embd.data[2]
 
         else:
             assert requires_grad
-            assert self.options['word_embedding']['cnt'] > 0
+            assert self.options['n_tokens_vocab'] > 0
 
-            self.word_embedding_cnt = self.options['word_embedding']['cnt']
-            self.word_embedding_dim = self.options['word_embedding']['dim']
+            self.word_embedding_cnt = self.options['n_tokens_vocab']
+            self.word_embedding_dim = self.options['word_embedding_dim']
+
             embd = torch.zeros(
                     (self.word_embedding_cnt + 1, self.word_embedding_dim),
                     dtype=torch.float,
