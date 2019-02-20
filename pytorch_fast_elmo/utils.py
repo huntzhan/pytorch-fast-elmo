@@ -4,7 +4,7 @@ import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, PackedSequence
 import numpy as np
 
-from pytorch_fast_elmo.restore import ElmoCharacterEncoderRestorer, ElmoWordEmbeddingRestorer
+from pytorch_fast_elmo.factory import ElmoCharacterEncoderFactory, ElmoWordEmbeddingFactory
 from _pytorch_fast_elmo import ElmoCharacterEncoder  # pylint: disable=no-name-in-module
 
 
@@ -198,11 +198,11 @@ def batch_to_word_ids(batch: List[List[str]], vocab2id: Dict[str, int]) -> torch
 
 
 def get_bos_eos_token_repr(
-        char_cnn_restorer: ElmoCharacterEncoderRestorer,
+        char_cnn_factory: ElmoCharacterEncoderFactory,
         char_cnn: ElmoCharacterEncoder,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # [<bow>, <bos/eos>, <eow>, max(kernal)...]
-    max_characters_per_token = max(kernal_size for kernal_size, _ in char_cnn_restorer.filters)
+    max_characters_per_token = max(kernal_size for kernal_size, _ in char_cnn_factory.filters)
     max_characters_per_token += 3
 
     bos_ids = make_bos(max_characters_per_token)
@@ -272,17 +272,17 @@ def cache_char_cnn_vocab(
     1. Load vocab.
     2. Feed vocab to Char CNN.
     3. Feed BOS/EOS to Char CNN.
-    4. Dump reprs to txt. (will be loaded by `ElmoWordEmbeddingRestorer`).
+    4. Dump reprs to txt. (will be loaded by `ElmoWordEmbeddingFactory`).
     """
     # 1.
     vocab = load_vocab(vocab_txt)
 
     # 2.
-    char_cnn_restorer = ElmoCharacterEncoderRestorer(
+    char_cnn_factory = ElmoCharacterEncoderFactory(
             options_file,
             weight_file,
     )
-    char_cnn = char_cnn_restorer.restore(requires_grad=False)
+    char_cnn = char_cnn_factory.create(requires_grad=False)
     if cuda_device >= 0:
         char_cnn.cuda(cuda_device)
 
@@ -309,7 +309,7 @@ def cache_char_cnn_vocab(
 
     # 3.
     lstm_bos_repr, lstm_eos_repr = get_bos_eos_token_repr(
-            char_cnn_restorer,
+            char_cnn_factory,
             char_cnn,
     )
     if cuda_device >= 0:
@@ -332,8 +332,8 @@ def export_word_embd(
         txt_out: str,
 ) -> None:
     vocab = load_vocab(vocab_txt)
-    word_embedding_restorer = ElmoWordEmbeddingRestorer(None, weight_file)
-    embedding_weight, _, _ = word_embedding_restorer.restore(requires_grad=False)
+    word_embedding_factory = ElmoWordEmbeddingFactory(None, weight_file)
+    embedding_weight, _, _ = word_embedding_factory.create(requires_grad=False)
     # remove padding.
     embedding_weight = embedding_weight.data[1:, :].numpy()
 

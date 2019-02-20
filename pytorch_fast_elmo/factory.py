@@ -27,7 +27,7 @@ def freeze_parameters(named_parameters: Dict[str, torch.Tensor]) -> None:
         param.requires_grad = False
 
 
-class RestorerBase:
+class FactoryBase:
 
     def __init__(
             self,
@@ -38,7 +38,7 @@ class RestorerBase:
         self.weight_file = weight_file
 
 
-class ElmoCharacterEncoderRestorer(RestorerBase):
+class ElmoCharacterEncoderFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
@@ -48,9 +48,9 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
             activation: str,
             num_highway_layers: int,
             output_dim: int,
-    ) -> 'ElmoCharacterEncoderRestorer':
-        restorer = ElmoCharacterEncoderRestorer(None, None)
-        restorer.options = {
+    ) -> 'ElmoCharacterEncoderFactory':
+        factory = ElmoCharacterEncoderFactory(None, None)
+        factory.options = {
                 'n_characters': char_embedding_cnt,
                 'char_cnn': {
                         'embedding': {
@@ -64,9 +64,9 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
                         'projection_dim': output_dim
                 },
         }
-        return restorer
+        return factory
 
-    def restore(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
+    def create(self, requires_grad: bool = False) -> ElmoCharacterEncoder:
         assert self.options and 'char_cnn' in self.options
 
         # Collect parameters for the construction of `ElmoCharacterEncoder`.
@@ -184,23 +184,23 @@ class ElmoCharacterEncoderRestorer(RestorerBase):
         self.named_parameters[bias_name].data.copy_(torch.FloatTensor(bias))
 
 
-class ElmoWordEmbeddingRestorer(RestorerBase):
+class ElmoWordEmbeddingFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
             cnt: int,
             dim: int,
-    ) -> 'ElmoWordEmbeddingRestorer':
-        restorer = ElmoWordEmbeddingRestorer(None, None)
-        restorer.options = {
+    ) -> 'ElmoWordEmbeddingFactory':
+        factory = ElmoWordEmbeddingFactory(None, None)
+        factory.options = {
                 'word_embedding': {
                         'cnt': cnt,
                         'dim': dim,
                 },
         }
-        return restorer
+        return factory
 
-    def restore(
+    def create(
             self,
             requires_grad: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -296,7 +296,7 @@ class ElmoWordEmbeddingRestorer(RestorerBase):
         return embd, lstm_bos_repr, lstm_eos_repr
 
 
-class ElmoLstmRestorer(RestorerBase):
+class ElmoLstmFactory(FactoryBase):
 
     @staticmethod
     def from_scratch(
@@ -307,9 +307,9 @@ class ElmoLstmRestorer(RestorerBase):
             cell_clip: float,
             proj_clip: float,
             truncated_bptt: int,
-    ) -> 'ElmoLstmRestorer':
-        restorer = ElmoLstmRestorer(None, None)
-        restorer.options = {
+    ) -> 'ElmoLstmFactory':
+        factory = ElmoLstmFactory(None, None)
+        factory.options = {
                 'lstm': {
                         'n_layers': num_layers,
                         'projection_dim': input_size,
@@ -320,9 +320,9 @@ class ElmoLstmRestorer(RestorerBase):
                 },
                 'unroll_steps': truncated_bptt,
         }
-        return restorer
+        return factory
 
-    def restore(
+    def create(
             self,
             enable_forward: bool = False,
             forward_requires_grad: bool = False,

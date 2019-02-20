@@ -8,10 +8,10 @@ from typing import List, Tuple, Optional, Dict, Union, Any, Set
 import torch
 from torch.nn.utils.rnn import PackedSequence
 
-from pytorch_fast_elmo.restore import (
-        ElmoCharacterEncoderRestorer,
-        ElmoWordEmbeddingRestorer,
-        ElmoLstmRestorer,
+from pytorch_fast_elmo.factory import (
+        ElmoCharacterEncoderFactory,
+        ElmoWordEmbeddingFactory,
+        ElmoLstmFactory,
 )
 from pytorch_fast_elmo import utils
 from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
@@ -93,7 +93,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             scalar_mix_parameters: Optional[List[float]] = None,
             do_layer_norm: bool = False,
 
-            # Controls the behavior of restorer.
+            # Controls the behavior of factory.
             # Char CNN.
             disable_char_cnn: bool = False,
             char_cnn_requires_grad: bool = False,
@@ -147,13 +147,13 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
         # Char CNN.
         if options_file:
-            self.char_cnn_restorer = ElmoCharacterEncoderRestorer(
+            self.char_cnn_factory = ElmoCharacterEncoderFactory(
                     options_file,
                     weight_file,
             )
         else:
             # From scratch.
-            self.char_cnn_restorer = ElmoCharacterEncoderRestorer.from_scratch(
+            self.char_cnn_factory = ElmoCharacterEncoderFactory.from_scratch(
                     char_embedding_cnt=char_cnn_char_embedding_cnt,
                     char_embedding_dim=char_cnn_char_embedding_dim,
                     filters=char_cnn_filters,
@@ -163,17 +163,17 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not disable_char_cnn:
-            self.char_cnn = self.char_cnn_restorer.restore(requires_grad=char_cnn_requires_grad)
+            self.char_cnn = self.char_cnn_factory.create(requires_grad=char_cnn_requires_grad)
 
         # Word Embedding.
         if options_file:
-            self.word_embedding_restorer = ElmoWordEmbeddingRestorer(
+            self.word_embedding_factory = ElmoWordEmbeddingFactory(
                     None,
                     word_embedding_weight_file or weight_file,
             )
         else:
             # From scratch.
-            self.word_embedding_restorer = ElmoWordEmbeddingRestorer.from_scratch(
+            self.word_embedding_factory = ElmoWordEmbeddingFactory.from_scratch(
                     cnt=word_embedding_cnt,
                     dim=word_embedding_dim,
             )
@@ -183,17 +183,17 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not disable_word_embedding:
             # Not a cpp extension.
             self.word_embedding_weight, lstm_bos_repr, lstm_eos_repr = \
-                    self.word_embedding_restorer.restore(requires_grad=word_embedding_requires_grad)
+                    self.word_embedding_factory.create(requires_grad=word_embedding_requires_grad)
 
         # LSTM.
         if options_file:
-            self.lstm_restorer = ElmoLstmRestorer(
+            self.lstm_factory = ElmoLstmFactory(
                     options_file,
                     weight_file,
             )
         else:
             # From scratch.
-            self.lstm_restorer = ElmoLstmRestorer.from_scratch(
+            self.lstm_factory = ElmoLstmFactory.from_scratch(
                     num_layers=lstm_num_layers,
                     input_size=lstm_input_size,
                     hidden_size=lstm_hidden_size,
@@ -204,7 +204,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not (disable_forward_lstm and disable_backward_lstm):
-            self.forward_lstm, self.backward_lstm = self.lstm_restorer.restore(
+            self.forward_lstm, self.backward_lstm = self.lstm_factory.create(
                     enable_forward=not disable_forward_lstm,
                     forward_requires_grad=forward_lstm_requires_grad,
                     enable_backward=not disable_backward_lstm,
@@ -221,7 +221,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
                 else:
                     self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
-                            self.char_cnn_restorer,
+                            self.char_cnn_factory,
                             self.char_cnn,
                     )
 
@@ -235,7 +235,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             for _ in range(num_output_representations):
                 scalar_mix = ScalarMix(
                         # char cnn + lstm.
-                        self.lstm_restorer.num_layers + 1,
+                        self.lstm_factory.num_layers + 1,
                         do_layer_norm=do_layer_norm,
                         initial_scalar_parameters=scalar_mix_parameters,
                         trainable=not scalar_mix_parameters,

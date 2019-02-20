@@ -15,10 +15,10 @@ from _pytorch_fast_elmo import (
         ScalarMix,
 )
 
-from pytorch_fast_elmo.restore import (
-        ElmoCharacterEncoderRestorer,
-        ElmoWordEmbeddingRestorer,
-        ElmoLstmRestorer,
+from pytorch_fast_elmo.factory import (
+        ElmoCharacterEncoderFactory,
+        ElmoWordEmbeddingFactory,
+        ElmoLstmFactory,
 )
 
 from pytorch_fast_elmo.integrate import (
