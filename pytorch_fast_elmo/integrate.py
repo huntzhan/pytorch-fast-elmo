@@ -12,6 +12,7 @@ from pytorch_fast_elmo.factory import (
         ElmoCharacterEncoderFactory,
         ElmoWordEmbeddingFactory,
         ElmoLstmFactory,
+        ElmoVocabProjectionFactory,
 )
 from pytorch_fast_elmo import utils
 from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
@@ -60,6 +61,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     }
     EXEC_PARAMS = {
             'exec_managed_lstm_bos_eos',
+            'exec_managed_lstm_reset_states',
             'exec_sort_batch',
     }
     COMMON_PARAMS = SCALAR_MIX_PARAMS | EXEC_PARAMS
@@ -128,6 +130,12 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             lstm_proj_clip: float = 3.0,
             lstm_truncated_bptt: int = 20,
 
+            # The final softmax layer.
+            disable_vocab_projection: bool = True,
+            vocab_projection_requires_grad: bool = False,
+            vocab_projection_input_size: int = 0,
+            vocab_projection_proj_size: int = 0,
+
             # Provide the BOS/EOS representations of shape `(projection_dim,)`
             # if char CNN is disabled.
             lstm_bos_repr: Optional[torch.Tensor] = None,
@@ -140,6 +148,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         self.disable_forward_lstm = disable_forward_lstm
         self.disable_backward_lstm = disable_backward_lstm
         self.disable_scalar_mix = disable_scalar_mix
+        self.disable_vocab_projection = disable_vocab_projection
 
         self.exec_managed_lstm_bos_eos = exec_managed_lstm_bos_eos
         self.exec_managed_lstm_reset_states = exec_managed_lstm_reset_states
@@ -168,7 +177,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         # Word Embedding.
         if options_file:
             self.word_embedding_factory = ElmoWordEmbeddingFactory(
-                    None,
+                    options_file,
                     word_embedding_weight_file or weight_file,
             )
         else:
@@ -224,6 +233,22 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                             self.char_cnn_factory,
                             self.char_cnn,
                     )
+
+        # Vocabulary projection.
+        if options_file:
+            self.vocab_projection_factory = ElmoVocabProjectionFactory(
+                    options_file,
+                    weight_file,
+            )
+        else:
+            self.vocab_projection_factory = ElmoVocabProjectionFactory.from_scratch(
+                    vocab_projection_input_size,
+                    vocab_projection_proj_size,
+            )
+
+        if not disable_vocab_projection:
+            self.vocab_projection_weight, self.vocab_projection_bias = \
+                    self.vocab_projection_factory.create(requires_grad=vocab_projection_requires_grad)
 
         # ScalarMix
         if not disable_scalar_mix:
@@ -524,6 +549,18 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         combined = [duplicated_char_cnn_packed]
         combined.extend(bilstm_packed)
         return combined
+
+    def exec_vocab_projection(self, context_repr: PackedSequence) -> PackedSequence:
+        """
+        Transform the last layer of LSTM to the probability distributions of vocabulary.
+        """
+        vocab_linear = torch.nn.functional.linear(
+                context_repr.data,
+                self.vocab_projection_weight,
+                self.vocab_projection_bias,
+        )
+        vocab_probs = torch.nn.functional.softmax(vocab_linear)
+        return PackedSequence(vocab_probs, context_repr.batch_sizes)
 
     def exec_scalar_mix(self, packed_sequences: List[PackedSequence]) -> List[PackedSequence]:
         """

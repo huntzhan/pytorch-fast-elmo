@@ -5,6 +5,7 @@ Follows AllenNLP.
 
 from typing import Dict, Tuple, Any, Optional, List
 import json
+import math
 
 import torch
 import h5py
@@ -279,6 +280,7 @@ class ElmoWordEmbeddingFactory(FactoryBase):
                     (self.word_embedding_cnt + 1, self.word_embedding_dim),
                     dtype=torch.float,
             )
+            torch.nn.init.normal_(embd)
             embd.requires_grad = True
 
             # `exec_managed_lstm_bos_eos` should be disabled in this case.
@@ -441,3 +443,71 @@ class ElmoLstmFactory(FactoryBase):
 
         self.named_parameters[prefix + '.proj_linearity_weight'].data.copy_(
                 torch.FloatTensor(proj_weights),)
+
+
+class ElmoVocabProjectionFactory(FactoryBase):
+
+    @staticmethod
+    def from_scratch(
+            input_size: int,
+            proj_size: int,
+    ) -> 'ElmoVocabProjectionFactory':
+        factory = ElmoVocabProjectionFactory(None, None)
+        factory.options = {
+                'lstm': {
+                        'projection_dim': input_size
+                },
+                'n_tokens_vocab': proj_size,
+        }
+        return factory
+
+    def create(
+            self,
+            requires_grad: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns (weight, bias) for affine transformation.
+        """
+        assert self.options \
+                and 'n_tokens_vocab' in self.options \
+                and 'lstm' in self.options
+
+        self.input_size = self.options['lstm']['projection_dim']
+        self.proj_size = self.options['n_tokens_vocab']
+        assert self.input_size > 0 and self.proj_size > 0
+
+        # Note: no padding zero.
+        weight = torch.zeros(
+                (self.proj_size, self.input_size),
+                dtype=torch.float,
+        )
+        bias = torch.zeros(
+                (self.proj_size,),
+                dtype=torch.float,
+        )
+
+        if self.weight_file:
+            with h5py.File(self.weight_file, 'r') as fin:
+                if 'softmax' not in fin:
+                    raise ValueError('softmax not in weight file.')
+                loaded_weight = fin['softmax']['W']
+                loaded_bias = fin['softmax']['b']
+
+            weight.data.copy_(torch.FloatTensor(loaded_weight))
+            weight.requires_grad = requires_grad
+
+            bias.data.copy(torch.FloatTensor(loaded_bias))
+            bias.requires_grad = requires_grad
+
+        else:
+            assert requires_grad
+            # init.
+            torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+            weight.requires_grad = True
+
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(weight)  # pylint: disable=protected-access
+            bound = 1 / math.sqrt(fan_in)
+            torch.nn.init.uniform_(bias, -bound, bound)
+            bias.requires_grad = True
+
+        return weight, bias
