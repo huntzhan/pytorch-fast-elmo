@@ -312,6 +312,25 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                     only_trainable=True,
             )
 
+        if not self.disable_vocab_projection:
+            if self.vocab_projection_weight.requires_grad:
+                param_name = 'vocab_projection_weight'
+                if override and hasattr(self, param_name):
+                    delattr(self, param_name)
+                self.register_parameter(
+                        param_name,
+                        torch.nn.Parameter(self.vocab_projection_weight, requires_grad=True),
+                )
+
+            if self.vocab_projection_bias.requires_grad:
+                param_name = 'vocab_projection_bias'
+                if override and hasattr(self, param_name):
+                    delattr(self, param_name)
+                self.register_parameter(
+                        param_name,
+                        torch.nn.Parameter(self.vocab_projection_bias, requires_grad=True),
+                )
+
         if not self.disable_scalar_mix:
             for idx, scalar_mix in enumerate(self.scalar_mixes):
                 _bind_cpp_extension_parameters(
@@ -342,6 +361,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not self.disable_backward_lstm:
             self._cpp_ext_cuda(self.backward_lstm, device)
 
+        if not self.disable_vocab_projection:
+            self.vocab_projection_weight = self.vocab_projection_weight.cuda(device)
+            self.vocab_projection_bias = self.vocab_projection_bias.cuda(device)
+
         if not self.disable_scalar_mix:
             for scalar_mix in self.scalar_mixes:
                 self._cpp_ext_cuda(scalar_mix, device)
@@ -363,6 +386,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             self.forward_lstm.cpu()
         if not self.disable_backward_lstm:
             self.backward_lstm.cpu()
+
+        if not self.disable_vocab_projection:
+            self.vocab_projection_weight = self.vocab_projection_weight.cpu()
+            self.vocab_projection_bias = self.vocab_projection_bias.cpu()
 
         if not self.disable_scalar_mix:
             for scalar_mix in self.scalar_mixes:
