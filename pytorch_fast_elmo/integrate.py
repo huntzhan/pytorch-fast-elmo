@@ -95,7 +95,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             scalar_mix_parameters: Optional[List[float]] = None,
             do_layer_norm: bool = False,
 
-            # Controls the behavior of factory.
+            # Controls the behavior of factories.
             # Char CNN.
             disable_char_cnn: bool = False,
             char_cnn_requires_grad: bool = False,
@@ -129,17 +129,16 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             lstm_cell_clip: float = 3.0,
             lstm_proj_clip: float = 3.0,
             lstm_truncated_bptt: int = 20,
+            # Provide the BOS/EOS representations of shape `(projection_dim,)`
+            # if char CNN is disabled.
+            lstm_bos_repr: Optional[torch.Tensor] = None,
+            lstm_eos_repr: Optional[torch.Tensor] = None,
 
             # The final softmax layer.
             disable_vocab_projection: bool = True,
             vocab_projection_requires_grad: bool = False,
             vocab_projection_input_size: int = 0,
             vocab_projection_proj_size: int = 0,
-
-            # Provide the BOS/EOS representations of shape `(projection_dim,)`
-            # if char CNN is disabled.
-            lstm_bos_repr: Optional[torch.Tensor] = None,
-            lstm_eos_repr: Optional[torch.Tensor] = None,
     ) -> None:
         super().__init__()
 
