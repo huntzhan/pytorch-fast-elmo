@@ -68,7 +68,7 @@ def generate_mask_from_lengths(
     return (lengths.unsqueeze(1) >= range_tensor).long()
 
 
-def unpack_outputs(inputs: PackedSequence,) -> torch.Tensor:
+def unpack_outputs(inputs: PackedSequence) -> torch.Tensor:
     """
     Unpack the final result and return `(tensor, mask)`.
     """

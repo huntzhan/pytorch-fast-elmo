@@ -25,6 +25,8 @@ from pytorch_fast_elmo.integrate import (
         FastElmoBase,
         FastElmo,
         FastElmoWordEmbedding,
+        FastElmoVocabDistrib,
+        FastElmoWordEmbeddingVocabDistrib,
 )
 
 from pytorch_fast_elmo.utils import (

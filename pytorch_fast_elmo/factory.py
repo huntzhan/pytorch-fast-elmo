@@ -490,13 +490,13 @@ class ElmoVocabProjectionFactory(FactoryBase):
             with h5py.File(self.weight_file, 'r') as fin:
                 if 'softmax' not in fin:
                     raise ValueError('softmax not in weight file.')
-                loaded_weight = fin['softmax']['W']
-                loaded_bias = fin['softmax']['b']
+                loaded_weight = fin['softmax']['W'][...]
+                loaded_bias = fin['softmax']['b'][...]
 
             weight.data.copy_(torch.FloatTensor(loaded_weight))
             weight.requires_grad = requires_grad
 
-            bias.data.copy(torch.FloatTensor(loaded_bias))
+            bias.data.copy_(torch.FloatTensor(loaded_bias))
             bias.requires_grad = requires_grad
 
         else:
