@@ -4,7 +4,8 @@ import pstats
 import io
 
 import fire
-from pytorch_fast_elmo import utils, profile
+from pytorch_fast_elmo import utils
+from pytorch_fast_elmo.tool import profile
 
 
 class Main:

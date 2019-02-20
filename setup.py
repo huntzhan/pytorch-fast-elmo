@@ -64,5 +64,5 @@ setup(
         ),
     ],
     cmdclass={'build_ext': BuildExtension},
-    entry_points={'console_scripts': ['fast-elmo = pytorch_fast_elmo.cli:main']},
+    entry_points={'console_scripts': ['fast-elmo = pytorch_fast_elmo.tool.cli:main']},
 )

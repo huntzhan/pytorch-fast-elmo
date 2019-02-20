@@ -810,7 +810,10 @@ class FastElmoVocabDistrib(FastElmoVocabDistribBase):
             weight_file: str,
             **kwargs: Any,
     ) -> None:
-        _raise_if_kwargs_is_invalid(set(), kwargs)
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos'},
+                kwargs,
+        )
         kwargs['disable_vocab_projection'] = False
         kwargs['disable_scalar_mix'] = True
         super().__init__(options_file, weight_file, **kwargs)
@@ -828,7 +831,10 @@ class FastElmoWordEmbeddingVocabDistrib(FastElmoVocabDistribBase):
             weight_file: str,
             **kwargs: Any,
     ) -> None:
-        _raise_if_kwargs_is_invalid({'word_embedding_weight_file'}, kwargs)
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos', 'word_embedding_weight_file'},
+                kwargs,
+        )
         kwargs['disable_char_cnn'] = True
         kwargs['disable_word_embedding'] = False
         kwargs['disable_vocab_projection'] = False
