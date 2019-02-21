@@ -7,11 +7,11 @@ import torch
 import numpy as np
 
 from pytorch_fast_elmo import (
-        # batch_to_char_ids,
+        batch_to_char_ids,
         load_and_build_vocab2id,
         batch_to_word_ids,
-        # FastElmoForwardVocabDistrib,
-        # FastElmoBackwardVocabDistrib,
+        FastElmoForwardVocabDistrib,
+        FastElmoBackwardVocabDistrib,
         FastElmoWordEmbeddingForwardVocabDistrib,
         FastElmoWordEmbeddingBackwardVocabDistrib,
 )
@@ -19,11 +19,13 @@ from pytorch_fast_elmo import (
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-def sample_sentence_no_char_cnn(
+def sample_sentence(
         options_file: str,
         weight_file: str,
         vocab_txt: str,
         output_json: str,
+        no_char_cnn: bool,
+        char_cnn_maxlen: int,
         go_forward: bool,
         next_token_top_k: int,
         sample_size: int,
@@ -31,13 +33,31 @@ def sample_sentence_no_char_cnn(
         warm_up_txt: Optional[str],
         cuda_device: int,
 ) -> None:
-    if go_forward:
-        fast_elmo_cls = FastElmoWordEmbeddingForwardVocabDistrib
+    if no_char_cnn:
+        if go_forward:
+            fast_elmo_cls = FastElmoWordEmbeddingForwardVocabDistrib
+        else:
+            fast_elmo_cls = FastElmoWordEmbeddingBackwardVocabDistrib
     else:
-        fast_elmo_cls = FastElmoWordEmbeddingBackwardVocabDistrib
+        if go_forward:
+            fast_elmo_cls = FastElmoForwardVocabDistrib
+        else:
+            fast_elmo_cls = FastElmoBackwardVocabDistrib
 
     vocab2id = load_and_build_vocab2id(vocab_txt)
     id2vocab = {token_id: token for token, token_id in vocab2id.items()}
+
+    if no_char_cnn:
+
+        def batch_to_ids(batch: List[List[str]]) -> torch.Tensor:
+            return batch_to_word_ids(batch, vocab2id)
+    else:
+
+        def batch_to_ids(batch: List[List[str]]) -> torch.Tensor:
+            if char_cnn_maxlen == 0:
+                return batch_to_char_ids(batch)
+            else:
+                return batch_to_char_ids(batch, char_cnn_maxlen)
 
     elmo = fast_elmo_cls(options_file, weight_file)
     if cuda_device >= 0:
@@ -45,19 +65,19 @@ def sample_sentence_no_char_cnn(
 
     # Warm up.
     if warm_up_txt:
-        sentences_word_ids = []
+        sentences_token_ids = []
         with open(warm_up_txt) as fin:
             for line in fin:
                 sent = line.split()
                 if not sent:
                     continue
-                word_ids = batch_to_word_ids([sent], vocab2id)
+                token_ids = batch_to_ids([sent])
                 if cuda_device >= 0:
-                    word_ids = word_ids.cuda(cuda_device)
-                sentences_word_ids.append(word_ids)
+                    token_ids = token_ids.cuda(cuda_device)
+                sentences_token_ids.append(token_ids)
 
-        for word_ids in sentences_word_ids:
-            elmo(word_ids)
+        for token_ids in sentences_token_ids:
+            elmo(token_ids)
 
     # Manually deal with BOS/EOS.
     elmo.exec_managed_lstm_bos_eos = False
@@ -82,12 +102,12 @@ def sample_sentence_no_char_cnn(
 
         if sample_constrain_txt:
             for token in itertools.chain([cur_token], sample_constrain_tokens[:-1]):
-                elmo(batch_to_word_ids([[token]], vocab2id))
+                elmo(batch_to_ids([[token]]))
             cur_token = sample_constrain_tokens[-1]
 
         info: List[Any] = []
         while cur_token != end_token:
-            batched = batch_to_word_ids([[cur_token]], vocab2id)
+            batched = batch_to_ids([[cur_token]])
             output, _ = elmo(batched)
             if cuda_device >= 0:
                 output = output.cpu()
@@ -113,7 +133,7 @@ def sample_sentence_no_char_cnn(
             cur_token = next_token
 
         # Ending.
-        elmo(batch_to_word_ids([[end_token]], vocab2id))
+        elmo(batch_to_ids([[end_token]]))
         # Save info.
         infos.append({
                 'text': ''.join(step['cur'] for step in info),

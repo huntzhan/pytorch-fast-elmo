@@ -106,6 +106,7 @@ class Main:
             output_json,
             go_forward=True,
             no_char_cnn=False,
+            char_cnn_maxlen=0,
             next_token_top_k=5,
             sample_size=1,
             sample_constrain_txt=None,
@@ -113,11 +114,13 @@ class Main:
             cuda_device=-1,
     ):
         if no_char_cnn:
-            inspect.sample_sentence_no_char_cnn(
+            inspect.sample_sentence(
                     options_file,
                     weight_file,
                     vocab_txt,
                     output_json,
+                    no_char_cnn,
+                    char_cnn_maxlen,
                     go_forward,
                     next_token_top_k,
                     sample_size,
