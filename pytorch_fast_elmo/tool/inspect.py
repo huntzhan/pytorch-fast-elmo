@@ -50,14 +50,20 @@ def sample_sentence(
     if no_char_cnn:
 
         def batch_to_ids(batch: List[List[str]]) -> torch.Tensor:
-            return batch_to_word_ids(batch, vocab2id)
+            tensor = batch_to_word_ids(batch, vocab2id)
+            if cuda_device >= 0:
+                tensor = tensor.cuda(cuda_device)
+            return tensor
     else:
 
         def batch_to_ids(batch: List[List[str]]) -> torch.Tensor:
             if char_cnn_maxlen == 0:
-                return batch_to_char_ids(batch)
+                tensor = batch_to_char_ids(batch)
             else:
-                return batch_to_char_ids(batch, char_cnn_maxlen)
+                tensor = batch_to_char_ids(batch, char_cnn_maxlen)
+            if cuda_device >= 0:
+                tensor = tensor.cuda(cuda_device)
+            return tensor
 
     elmo = fast_elmo_cls(options_file, weight_file)
     if cuda_device >= 0:
@@ -72,8 +78,6 @@ def sample_sentence(
                 if not sent:
                     continue
                 token_ids = batch_to_ids([sent])
-                if cuda_device >= 0:
-                    token_ids = token_ids.cuda(cuda_device)
                 sentences_token_ids.append(token_ids)
 
         for token_ids in sentences_token_ids:
@@ -108,9 +112,6 @@ def sample_sentence(
         info: List[Any] = []
         while cur_token != end_token:
             batched = batch_to_ids([[cur_token]])
-            if cuda_device >= 0:
-                batched = batched.cuda(cuda_device)
-
             output, _ = elmo(batched)
             if cuda_device >= 0:
                 output = output.cpu()
