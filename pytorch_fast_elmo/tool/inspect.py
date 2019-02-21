@@ -1,5 +1,7 @@
 from typing import Optional, List, Any
 import json
+import logging
+import itertools
 
 import torch
 import numpy as np
@@ -14,6 +16,8 @@ from pytorch_fast_elmo import (
         FastElmoWordEmbeddingBackwardVocabDistrib,
 )
 
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
 
 def sample_sentence_no_char_cnn(
         options_file: str,
@@ -23,6 +27,7 @@ def sample_sentence_no_char_cnn(
         go_forward: bool,
         next_token_top_k: int,
         sample_size: int,
+        sample_constrain_txt: Optional[str],
         warm_up_txt: Optional[str],
         cuda_device: int,
 ) -> None:
@@ -32,6 +37,8 @@ def sample_sentence_no_char_cnn(
         fast_elmo_cls = FastElmoWordEmbeddingBackwardVocabDistrib
 
     vocab2id = load_and_build_vocab2id(vocab_txt)
+    id2vocab = {token_id: token for token, token_id in vocab2id.items()}
+
     elmo = fast_elmo_cls(options_file, weight_file)
     if cuda_device >= 0:
         elmo = elmo.cuda(cuda_device)  # type: ignore
@@ -55,7 +62,16 @@ def sample_sentence_no_char_cnn(
     # Manually deal with BOS/EOS.
     elmo.exec_managed_lstm_bos_eos = False
 
-    id2vocab = {token_id: token for token, token_id in vocab2id.items()}
+    if sample_constrain_txt:
+        with open(sample_constrain_txt) as fin:
+            lines = fin.readlines()
+            if not lines:
+                raise ValueError('No content in sample_constrain_txt.')
+            if len(lines) > 1:
+                logging.warning('Multiple lines in sample_constrain_txt, only use the 1st line.')
+            sample_constrain_tokens = lines[0].split()
+        if not go_forward:
+            sample_constrain_tokens.reverse()
 
     infos: List[Any] = []
     for _ in range(sample_size):
@@ -63,6 +79,11 @@ def sample_sentence_no_char_cnn(
             cur_token, end_token = '<S>', '</S>'
         else:
             cur_token, end_token = '</S>', '<S>'
+
+        if sample_constrain_txt:
+            for token in itertools.chain([cur_token], sample_constrain_tokens[:-1]):
+                elmo(batch_to_word_ids([[token]], vocab2id))
+            cur_token = sample_constrain_tokens[-1]
 
         info: List[Any] = []
         while cur_token != end_token:
@@ -98,6 +119,10 @@ def sample_sentence_no_char_cnn(
                 'text': ''.join(step['cur'] for step in info),
                 'trace': info,
         })
+        if sample_constrain_txt:
+            infos[-1]['text'] = ''.join(sample_constrain_tokens[:-1]) + infos[-1]['text']
+        if not go_forward:
+            infos[-1]['text'] = infos[-1]['text'][::-1]
 
     # Output to JSON.
     with open(output_json, 'w') as fout:

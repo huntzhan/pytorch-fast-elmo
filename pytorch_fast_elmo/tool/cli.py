@@ -108,6 +108,7 @@ class Main:
             no_char_cnn=False,
             next_token_top_k=5,
             sample_size=1,
+            sample_constrain_txt=None,
             warm_up_txt=None,
             cuda_device=-1,
     ):
@@ -120,6 +121,7 @@ class Main:
                     go_forward,
                     next_token_top_k,
                     sample_size,
+                    sample_constrain_txt,
                     warm_up_txt,
                     cuda_device,
             )
