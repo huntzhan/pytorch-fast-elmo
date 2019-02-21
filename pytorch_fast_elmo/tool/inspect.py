@@ -108,6 +108,9 @@ def sample_sentence(
         info: List[Any] = []
         while cur_token != end_token:
             batched = batch_to_ids([[cur_token]])
+            if cuda_device >= 0:
+                batched = batched.cuda(cuda_device)
+
             output, _ = elmo(batched)
             if cuda_device >= 0:
                 output = output.cpu()
