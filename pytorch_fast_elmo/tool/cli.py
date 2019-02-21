@@ -4,7 +4,8 @@ import pstats
 import io
 
 import fire
-from pytorch_fast_elmo import utils, profile
+from pytorch_fast_elmo import utils
+from pytorch_fast_elmo.tool import profile, inspect
 
 
 class Main:
@@ -96,6 +97,37 @@ class Main:
                 fout.write(sstream.getvalue())
         else:
             print(sstream.getvalue())
+
+    def sample_sentence(  # type: ignore
+            self,
+            options_file,
+            weight_file,
+            vocab_txt,
+            output_json,
+            go_forward=True,
+            no_char_cnn=False,
+            char_cnn_maxlen=0,
+            next_token_top_k=5,
+            sample_size=1,
+            sample_constrain_txt=None,
+            warm_up_txt=None,
+            cuda_device=-1,
+    ):
+        if no_char_cnn:
+            inspect.sample_sentence(
+                    options_file,
+                    weight_file,
+                    vocab_txt,
+                    output_json,
+                    no_char_cnn,
+                    char_cnn_maxlen,
+                    go_forward,
+                    next_token_top_k,
+                    sample_size,
+                    sample_constrain_txt,
+                    warm_up_txt,
+                    cuda_device,
+            )
 
 
 def main():  # type: ignore

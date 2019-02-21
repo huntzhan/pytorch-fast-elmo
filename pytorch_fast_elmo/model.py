@@ -312,6 +312,25 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                     only_trainable=True,
             )
 
+        if not self.disable_vocab_projection:
+            if self.vocab_projection_weight.requires_grad:
+                param_name = 'vocab_projection_weight'
+                if override and hasattr(self, param_name):
+                    delattr(self, param_name)
+                self.register_parameter(
+                        param_name,
+                        torch.nn.Parameter(self.vocab_projection_weight, requires_grad=True),
+                )
+
+            if self.vocab_projection_bias.requires_grad:
+                param_name = 'vocab_projection_bias'
+                if override and hasattr(self, param_name):
+                    delattr(self, param_name)
+                self.register_parameter(
+                        param_name,
+                        torch.nn.Parameter(self.vocab_projection_bias, requires_grad=True),
+                )
+
         if not self.disable_scalar_mix:
             for idx, scalar_mix in enumerate(self.scalar_mixes):
                 _bind_cpp_extension_parameters(
@@ -342,6 +361,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not self.disable_backward_lstm:
             self._cpp_ext_cuda(self.backward_lstm, device)
 
+        if not self.disable_vocab_projection:
+            self.vocab_projection_weight = self.vocab_projection_weight.cuda(device)
+            self.vocab_projection_bias = self.vocab_projection_bias.cuda(device)
+
         if not self.disable_scalar_mix:
             for scalar_mix in self.scalar_mixes:
                 self._cpp_ext_cuda(scalar_mix, device)
@@ -363,6 +386,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             self.forward_lstm.cpu()
         if not self.disable_backward_lstm:
             self.backward_lstm.cpu()
+
+        if not self.disable_vocab_projection:
+            self.vocab_projection_weight = self.vocab_projection_weight.cpu()
+            self.vocab_projection_bias = self.vocab_projection_bias.cpu()
 
         if not self.disable_scalar_mix:
             for scalar_mix in self.scalar_mixes:
@@ -403,31 +430,30 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         batched = tensor.unsqueeze(0).expand(batch_size, -1)
         return PackedSequence(batched, torch.LongTensor([batch_size]))
 
-    def get_batched_lstm_bos_repr(self, batch_size: int) -> PackedSequence:
-        return self.get_batched_lstm_bos_eos_repr('lstm_bos_repr', batch_size)
-
-    def get_batched_lstm_eos_repr(self, batch_size: int) -> PackedSequence:
-        return self.get_batched_lstm_bos_eos_repr('lstm_eos_repr', batch_size)
-
-    def exec_forward_lstm_bos(self, batch_size: int) -> None:
-        batched = self.get_batched_lstm_bos_repr(batch_size)
+    def exec_forward_backword_lstm_bos_eos(
+            self,
+            lstm_attr_name: str,
+            bos_eos_attr_name: str,
+            batch_size: int,
+    ) -> torch.Tensor:
+        lstm = getattr(self, lstm_attr_name)
+        batched = self.get_batched_lstm_bos_eos_repr(bos_eos_attr_name, batch_size)
         with torch.no_grad():
-            self.forward_lstm(batched.data, batched.batch_sizes)
+            outputs, _ = lstm(batched.data, batched.batch_sizes)
+            # Returns the output of last layer.
+            return outputs[-1]
 
-    def exec_forward_lstm_eos(self, batch_size: int) -> None:
-        batched = self.get_batched_lstm_eos_repr(batch_size)
-        with torch.no_grad():
-            self.forward_lstm(batched.data, batched.batch_sizes)
+    def exec_forward_lstm_bos(self, batch_size: int) -> torch.Tensor:
+        return self.exec_forward_backword_lstm_bos_eos('forward_lstm', 'lstm_bos_repr', batch_size)
 
-    def exec_backward_lstm_bos(self, batch_size: int) -> None:
-        batched = self.get_batched_lstm_bos_repr(batch_size)
-        with torch.no_grad():
-            self.backward_lstm(batched.data, batched.batch_sizes)
+    def exec_forward_lstm_eos(self, batch_size: int) -> torch.Tensor:
+        return self.exec_forward_backword_lstm_bos_eos('forward_lstm', 'lstm_eos_repr', batch_size)
 
-    def exec_backward_lstm_eos(self, batch_size: int) -> None:
-        batched = self.get_batched_lstm_eos_repr(batch_size)
-        with torch.no_grad():
-            self.backward_lstm(batched.data, batched.batch_sizes)
+    def exec_backward_lstm_bos(self, batch_size: int) -> torch.Tensor:
+        return self.exec_forward_backword_lstm_bos_eos('backward_lstm', 'lstm_bos_repr', batch_size)
+
+    def exec_backward_lstm_eos(self, batch_size: int) -> torch.Tensor:
+        return self.exec_forward_backword_lstm_bos_eos('backward_lstm', 'lstm_eos_repr', batch_size)
 
     def exec_forward_lstm_permutate_states(self, index: torch.Tensor) -> None:
         self.forward_lstm.permutate_states(index)
@@ -436,8 +462,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         self.backward_lstm.permutate_states(index)
 
     def exec_bilstm_permutate_states(self, index: torch.Tensor) -> None:
-        self.exec_forward_lstm_permutate_states(index)
-        self.exec_backward_lstm_permutate_states(index)
+        if not self.disable_forward_lstm:
+            self.exec_forward_lstm_permutate_states(index)
+        if not self.disable_backward_lstm:
+            self.exec_backward_lstm_permutate_states(index)
 
     def exec_char_cnn(self, inputs: PackedSequence) -> PackedSequence:
         """
@@ -757,25 +785,27 @@ class FastElmoWordEmbedding(FastElmoBase):
         return self.forward_like_allennlp(inputs)
 
 
-class FastElmoVocabDistribBase(FastElmoBase):  # pylint: disable=abstract-method
+class FastElmoUnidirectionalVocabDistribBase(FastElmoBase):  # pylint: disable=abstract-method
 
-    def exec_vocab_prob_distrib(self, token_repr: PackedSequence) -> List[PackedSequence]:
-        fwd_lstm_last, bwd_lstm_last = self.exec_bilstm(token_repr)[-1]
-
+    def exec_forward_vocab_prob_distrib(self, token_repr: PackedSequence) -> List[PackedSequence]:
+        fwd_lstm_last = self.exec_forward_lstm(token_repr)[-1]
         fwd_vocab_distrib = self.exec_vocab_projection(fwd_lstm_last)
+        return [fwd_vocab_distrib]
+
+    def exec_backward_vocab_prob_distrib(self, token_repr: PackedSequence) -> List[PackedSequence]:
+        bwd_lstm_last = self.exec_backward_lstm(token_repr)[-1]
         bwd_vocab_distrib = self.exec_vocab_projection(bwd_lstm_last)
-        return [fwd_vocab_distrib, bwd_vocab_distrib]
+        return [bwd_vocab_distrib]
 
     def forward(  # type: ignore
             self,
             inputs: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        (fwd_vocab_distrib, bwd_vocab_distrib), mask = \
-                self.forward_with_sorting_and_packing(inputs)
-        return fwd_vocab_distrib, bwd_vocab_distrib, mask
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        (vocab_distrib,), mask = self.forward_with_sorting_and_packing(inputs)
+        return vocab_distrib, mask
 
 
-class FastElmoVocabDistrib(FastElmoVocabDistribBase):
+class FastElmoForwardVocabDistrib(FastElmoUnidirectionalVocabDistribBase):
 
     def __init__(
             self,
@@ -783,17 +813,21 @@ class FastElmoVocabDistrib(FastElmoVocabDistribBase):
             weight_file: str,
             **kwargs: Any,
     ) -> None:
-        _raise_if_kwargs_is_invalid(set(), kwargs)
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos'},
+                kwargs,
+        )
+        kwargs['disable_backward_lstm'] = True
         kwargs['disable_vocab_projection'] = False
         kwargs['disable_scalar_mix'] = True
         super().__init__(options_file, weight_file, **kwargs)
 
     def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
         token_repr = self.exec_char_cnn(inputs)
-        return self.exec_vocab_prob_distrib(token_repr)
+        return self.exec_forward_vocab_prob_distrib(token_repr)
 
 
-class FastElmoWordEmbeddingVocabDistrib(FastElmoVocabDistribBase):
+class FastElmoBackwardVocabDistrib(FastElmoUnidirectionalVocabDistribBase):
 
     def __init__(
             self,
@@ -801,13 +835,63 @@ class FastElmoWordEmbeddingVocabDistrib(FastElmoVocabDistribBase):
             weight_file: str,
             **kwargs: Any,
     ) -> None:
-        _raise_if_kwargs_is_invalid({'word_embedding_weight_file'}, kwargs)
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos'},
+                kwargs,
+        )
+        kwargs['disable_forward_lstm'] = True
+        kwargs['disable_vocab_projection'] = False
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_char_cnn(inputs)
+        return self.exec_backward_vocab_prob_distrib(token_repr)
+
+
+class FastElmoWordEmbeddingForwardVocabDistrib(FastElmoUnidirectionalVocabDistribBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos', 'word_embedding_weight_file'},
+                kwargs,
+        )
         kwargs['disable_char_cnn'] = True
         kwargs['disable_word_embedding'] = False
+        kwargs['disable_backward_lstm'] = True
         kwargs['disable_vocab_projection'] = False
         kwargs['disable_scalar_mix'] = True
         super().__init__(options_file, weight_file, **kwargs)
 
     def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
         token_repr = self.exec_word_embedding(inputs)
-        return self.exec_vocab_prob_distrib(token_repr)
+        return self.exec_forward_vocab_prob_distrib(token_repr)
+
+
+class FastElmoWordEmbeddingBackwardVocabDistrib(FastElmoUnidirectionalVocabDistribBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(
+                {'exec_managed_lstm_bos_eos', 'word_embedding_weight_file'},
+                kwargs,
+        )
+        kwargs['disable_char_cnn'] = True
+        kwargs['disable_word_embedding'] = False
+        kwargs['disable_forward_lstm'] = True
+        kwargs['disable_vocab_projection'] = False
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_word_embedding(inputs)
+        return self.exec_backward_vocab_prob_distrib(token_repr)
