@@ -104,6 +104,7 @@ class Main:
             weight_file,
             vocab_txt,
             output_json,
+            enable_trace=False,
             go_forward=True,
             no_char_cnn=False,
             char_cnn_maxlen=0,
@@ -113,21 +114,21 @@ class Main:
             warm_up_txt=None,
             cuda_device=-1,
     ):
-        if no_char_cnn:
-            inspect.sample_sentence(
-                    options_file,
-                    weight_file,
-                    vocab_txt,
-                    output_json,
-                    no_char_cnn,
-                    char_cnn_maxlen,
-                    go_forward,
-                    next_token_top_k,
-                    sample_size,
-                    sample_constrain_txt,
-                    warm_up_txt,
-                    cuda_device,
-            )
+        inspect.sample_sentence(
+                options_file,
+                weight_file,
+                vocab_txt,
+                output_json,
+                enable_trace,
+                no_char_cnn,
+                char_cnn_maxlen,
+                go_forward,
+                next_token_top_k,
+                sample_size,
+                sample_constrain_txt,
+                warm_up_txt,
+                cuda_device,
+        )
 
 
 def main():  # type: ignore

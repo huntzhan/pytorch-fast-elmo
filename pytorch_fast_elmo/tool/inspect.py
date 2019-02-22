@@ -24,6 +24,7 @@ def sample_sentence(
         weight_file: str,
         vocab_txt: str,
         output_json: str,
+        enable_trace: bool,
         no_char_cnn: bool,
         char_cnn_maxlen: int,
         go_forward: bool,
@@ -139,10 +140,9 @@ def sample_sentence(
         # Ending.
         elmo(batch_to_ids([[end_token]]))
         # Save info.
-        infos.append({
-                'text': ''.join(step['cur'] for step in info),
-                'trace': info,
-        })
+        infos.append({'text': ''.join(step['cur'] for step in info)})
+        if enable_trace:
+            infos[-1]['trace'] = info
         if sample_constrain_txt:
             infos[-1]['text'] = ''.join(sample_constrain_tokens[:-1]) + infos[-1]['text']
         if not go_forward:
