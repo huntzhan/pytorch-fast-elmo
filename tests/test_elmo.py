@@ -375,7 +375,7 @@ def test_fast_elmo_save_and_load():
     )
 
     # Change weight and save.
-    fast_1.cpp_ext_scalar_mix_0_scalar_0.data.fill_(42.)
+    fast_1.scalar_mix_0.scalar_parameters[0].data.fill_(42.)
     fast_1_state_dict = fast_1.state_dict()
 
     # Load.
@@ -385,8 +385,8 @@ def test_fast_elmo_save_and_load():
     )
     fast_2.load_state_dict(fast_1_state_dict)
 
-    assert float(fast_2.cpp_ext_scalar_mix_0_scalar_0) == 42.
-    assert float(fast_2.scalar_mixes[0].named_parameters()['scalar_0']) == 42.
+    assert float(fast_2.scalar_mix_0.scalar_parameters[0]) == 42.
+    # assert float(fast_2.scalar_mixes[0].named_parameters()['scalar_0']) == 42.
 
 
 def test_fast_elmo_word_embedding():

@@ -10,7 +10,8 @@ import torch
 
 # pylint: disable=no-name-in-module
 from pytorch_stateful_lstm import StatefulUnidirectionalLstm
-from _pytorch_fast_elmo import ElmoCharacterEncoder, ScalarMix
+# from _pytorch_fast_elmo import ElmoCharacterEncoder, ScalarMix
+from _pytorch_fast_elmo import ElmoCharacterEncoder
 
 from pytorch_fast_elmo.utils import (
         batch_to_char_ids,
@@ -26,6 +27,7 @@ from pytorch_fast_elmo.factory import (
 )
 
 from pytorch_fast_elmo.model import (
+        ScalarMix,
         FastElmoBase,
         FastElmo,
         FastElmoWordEmbedding,

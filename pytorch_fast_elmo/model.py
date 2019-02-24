@@ -7,6 +7,7 @@ from typing import List, Tuple, Optional, Dict, Union, Any, Set
 
 import torch
 from torch.nn.utils.rnn import PackedSequence
+from torch.nn import ParameterList, Parameter
 
 from pytorch_fast_elmo.factory import (
         ElmoCharacterEncoderFactory,
@@ -15,7 +16,8 @@ from pytorch_fast_elmo.factory import (
         ElmoVocabProjectionFactory,
 )
 from pytorch_fast_elmo import utils
-from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
+
+# from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
 
 
 def _bind_cpp_extension_parameters(
@@ -48,6 +50,84 @@ def _raise_if_kwargs_is_invalid(allowed: Set[str], kwargs: Dict[str, Any]) -> No
     if invalid_keys:
         msg = '\n'.join('invalid kwargs: {}'.format(key) for key in invalid_keys)
         raise ValueError(msg)
+
+
+# Implement in Python as a temporary solution.
+class ScalarMix(torch.nn.Module):
+
+    def __init__(
+            self,
+            mixture_size: int,
+            do_layer_norm: bool = False,
+            initial_scalar_parameters: List[float] = None,
+            trainable: bool = True,
+    ) -> None:
+        super().__init__()
+        self.mixture_size = mixture_size
+        self.do_layer_norm = do_layer_norm
+
+        if initial_scalar_parameters is None:
+            initial_scalar_parameters = [1.0 / mixture_size] * mixture_size
+        elif len(initial_scalar_parameters) != mixture_size:
+            raise ValueError("initial_scalar_parameters & mixture_size not match.")
+
+        self.scalar_parameters = ParameterList([
+                Parameter(
+                        torch.FloatTensor([val]),
+                        requires_grad=trainable,
+                ) for val in initial_scalar_parameters
+        ])
+        self.gamma = Parameter(torch.FloatTensor([1.0]), requires_grad=trainable)
+
+    def forward(
+            self,
+            tensors: List[torch.Tensor],  # pylint: disable=arguments-differ
+            mask: torch.Tensor = None,
+    ) -> torch.Tensor:
+
+        def apply_layer_norm(tensor, broadcast_mask, num_elements_not_masked):
+            tensor_masked = tensor * broadcast_mask
+            mean = torch.sum(tensor_masked) / num_elements_not_masked
+            variance = torch.sum(torch.pow(
+                    (tensor_masked - mean) * broadcast_mask,
+                    2,
+            )) / num_elements_not_masked
+            return (tensor - mean) / torch.sqrt(variance + 1E-12)
+
+        if len(tensors) != self.mixture_size:
+            raise ValueError("tensors & mixture_size not match.")
+        if self.do_layer_norm and mask is None:
+            if tensors[0].ndimension() == 2:
+                mask = torch.ones((tensors[0].shape[0],))
+            else:
+                raise ValueError("do_layer_norm but mask is not defined.")
+
+        normed_weights = torch.split(
+                torch.softmax(
+                        torch.cat(list(self.scalar_parameters)),
+                        0,
+                ),
+                1,
+        )
+        if self.do_layer_norm:
+            mask_float = mask.float()
+            broadcast_mask = mask_float.unsqueeze(-1)
+            input_dim = tensors[0].size(-1)
+            num_elements_not_masked = torch.sum(mask_float) * input_dim
+
+        pieces = []
+        for idx in range(self.mixture_size):
+            tensor = tensors[idx]
+            if self.do_layer_norm:
+                tensor = apply_layer_norm(
+                        tensor,
+                        broadcast_mask,
+                        num_elements_not_masked,
+                )
+            weighted_tensor = normed_weights[idx] * tensor
+            pieces.append(weighted_tensor)
+
+        return self.gamma * sum(pieces)
 
 
 class FastElmoBase(torch.nn.Module):  # type: ignore
@@ -253,10 +333,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         if not disable_scalar_mix:
             self.scalar_mixes: List[ScalarMix] = []
 
-            if scalar_mix_parameters is None:
-                scalar_mix_parameters = []
-
-            for _ in range(num_output_representations):
+            for idx in range(num_output_representations):
                 scalar_mix = ScalarMix(
                         # char cnn + lstm.
                         self.lstm_factory.num_layers + 1,
@@ -264,6 +341,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         initial_scalar_parameters=scalar_mix_parameters,
                         trainable=not scalar_mix_parameters,
                 )
+                self.add_module(f'scalar_mix_{idx}', scalar_mix)
                 self.scalar_mixes.append(scalar_mix)
 
             self.repr_dropout = None
@@ -331,15 +409,15 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         torch.nn.Parameter(self.vocab_projection_bias, requires_grad=True),
                 )
 
-        if not self.disable_scalar_mix:
-            for idx, scalar_mix in enumerate(self.scalar_mixes):
-                _bind_cpp_extension_parameters(
-                        self,
-                        scalar_mix,
-                        f'scalar_mix_{idx}_',
-                        override=override,
-                        only_trainable=True,
-                )
+        # if not self.disable_scalar_mix:
+        #     for idx, scalar_mix in enumerate(self.scalar_mixes):
+        #         _bind_cpp_extension_parameters(
+        #                 self,
+        #                 scalar_mix,
+        #                 f'scalar_mix_{idx}_',
+        #                 override=override,
+        #                 only_trainable=True,
+        #         )
 
     def _cpp_ext_cuda(self, cpp_module: Any, device: Optional[int] = None) -> None:
         # TODO: handle optional parameter in cpp extension.
@@ -365,9 +443,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             self.vocab_projection_weight = self.vocab_projection_weight.cuda(device)
             self.vocab_projection_bias = self.vocab_projection_bias.cuda(device)
 
-        if not self.disable_scalar_mix:
-            for scalar_mix in self.scalar_mixes:
-                self._cpp_ext_cuda(scalar_mix, device)
+        # if not self.disable_scalar_mix:
+        #     for scalar_mix in self.scalar_mixes:
+        #         self._cpp_ext_cuda(scalar_mix, device)
 
         # Override parameter bindings.
         self._bind_parameters(override=True)
@@ -391,9 +469,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             self.vocab_projection_weight = self.vocab_projection_weight.cpu()
             self.vocab_projection_bias = self.vocab_projection_bias.cpu()
 
-        if not self.disable_scalar_mix:
-            for scalar_mix in self.scalar_mixes:
-                scalar_mix.cpu()
+        # if not self.disable_scalar_mix:
+        #     for scalar_mix in self.scalar_mixes:
+        #         scalar_mix.cpu()
 
         # Also, move BOS/EOS back to CPU.
         if not (self.disable_forward_lstm and self.disable_backward_lstm):
@@ -726,11 +804,13 @@ class FastElmo(FastElmoBase):
             **kwargs: Any,
     ) -> None:
         _raise_if_kwargs_is_invalid(
-                self.COMMON_PARAMS | {
-                        'char_cnn_requires_grad',
-                        'forward_lstm_requires_grad',
-                        'backward_lstm_requires_grad',
-                }, kwargs)
+                self.COMMON_PARAMS | set([
+                        # Fine-tuning is not fully supported by pytorch.
+                        # 'char_cnn_requires_grad',
+                        # 'forward_lstm_requires_grad',
+                        # 'backward_lstm_requires_grad',
+                ]),
+                kwargs)
         super().__init__(options_file, weight_file, **kwargs)
 
     def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
@@ -761,10 +841,12 @@ class FastElmoWordEmbedding(FastElmoBase):
         _raise_if_kwargs_is_invalid(
                 self.COMMON_PARAMS | {
                         'word_embedding_weight_file',
-                        'word_embedding_requires_grad',
-                        'forward_lstm_requires_grad',
-                        'backward_lstm_requires_grad',
-                }, kwargs)
+                        # Fine-tuning is not fully supported by pytorch.
+                        # 'word_embedding_requires_grad',
+                        # 'forward_lstm_requires_grad',
+                        # 'backward_lstm_requires_grad',
+                },
+                kwargs)
 
         kwargs['disable_char_cnn'] = True
         kwargs['disable_word_embedding'] = False
