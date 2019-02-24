@@ -53,13 +53,13 @@ def _raise_if_kwargs_is_invalid(allowed: Set[str], kwargs: Dict[str, Any]) -> No
 
 
 # Implement in Python as a temporary solution.
-class ScalarMix(torch.nn.Module):
+class ScalarMix(torch.nn.Module):  # type: ignore
 
     def __init__(
             self,
             mixture_size: int,
             do_layer_norm: bool = False,
-            initial_scalar_parameters: List[float] = None,
+            initial_scalar_parameters: Optional[List[float]] = None,
             trainable: bool = True,
     ) -> None:
         super().__init__()
@@ -85,7 +85,7 @@ class ScalarMix(torch.nn.Module):
             mask: torch.Tensor = None,
     ) -> torch.Tensor:
 
-        def apply_layer_norm(tensor, broadcast_mask, num_elements_not_masked):
+        def apply_layer_norm(tensor, broadcast_mask, num_elements_not_masked):  # type: ignore
             tensor_masked = tensor * broadcast_mask
             mean = torch.sum(tensor_masked) / num_elements_not_masked
             variance = torch.sum(torch.pow(
@@ -119,7 +119,7 @@ class ScalarMix(torch.nn.Module):
         for idx in range(self.mixture_size):
             tensor = tensors[idx]
             if self.do_layer_norm:
-                tensor = apply_layer_norm(
+                tensor = apply_layer_norm(  # type: ignore
                         tensor,
                         broadcast_mask,
                         num_elements_not_masked,
