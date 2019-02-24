@@ -72,13 +72,17 @@ inline torch::Tensor apply_layer_norm(
 //              should match the prefix of the shape of `tensors`.
 torch::Tensor ScalarMixImpl::forward(
     const std::vector<torch::Tensor> &tensors,
-    torch::Tensor mask) {
+    torch::optional<torch::Tensor> optional_mask) {
   // Check the length of `tensors`.
   if (static_cast<int64_t>(tensors.size()) != mixture_size_) {
     throw std::invalid_argument(
         "tensors & mixture_size not match.");
   }
   // Check the mask.
+  torch::Tensor mask;
+  if (optional_mask.has_value()) {
+    mask = optional_mask.value();
+  }
   if (do_layer_norm_ && !mask.defined()) {
     if (tensors[0].dim() == 2) {
       // To handle the packed sequences.

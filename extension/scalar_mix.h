@@ -15,7 +15,7 @@ struct ScalarMixImpl : torch::nn::Module {
 
   torch::Tensor forward(
       const std::vector<torch::Tensor> &tensors,
-      torch::Tensor mask);
+      torch::optional<torch::Tensor> optional_mask);
 
   int64_t mixture_size_ = -1;
   bool do_layer_norm_ = false;

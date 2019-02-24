@@ -21,7 +21,7 @@ def test_scalar_mix_can_run_forward():
     for k in range(3):
         access_scalar_parameters(mixture, k).data[0] = 0.1 * (k + 1)
     access_gamma(mixture).data[0] = 0.5
-    result = mixture(tensors)
+    result = mixture(tensors, None)
 
     weights = [0.1, 0.2, 0.3]
     normed_weights = numpy.exp(weights) / numpy.sum(numpy.exp(weights))
@@ -34,7 +34,7 @@ def test_scalar_mix_throws_error_on_incorrect_number_of_inputs():
     mixture = ScalarMix(3)
     tensors = [torch.randn([3, 4, 5]) for _ in range(5)]
     with pytest.raises(ValueError):
-        _ = mixture(tensors)
+        _ = mixture(tensors, None)
 
 
 def test_scalar_mix_throws_error_on_incorrect_initial_scalar_parameters_length():
@@ -80,4 +80,4 @@ def test_scalar_mix_layer_norm():
 def test_scalar_mix_layer_norm_packed_sequence():
     mixture = ScalarMix(3, do_layer_norm=True)
     tensors = [torch.randn([3, 4]) for _ in range(3)]
-    mixture(tensors)
+    mixture(tensors, None)

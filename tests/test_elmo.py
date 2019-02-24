@@ -15,6 +15,8 @@ from allennlp.data.token_indexers.elmo_indexer import (
 )
 from allennlp.modules.elmo import _ElmoCharacterEncoder, _ElmoBiLm, Elmo
 
+import pytest
+
 from pytorch_fast_elmo import (
         ElmoCharacterEncoder,
         ElmoCharacterEncoderFactory,
@@ -375,18 +377,21 @@ def test_fast_elmo_save_and_load():
     )
 
     # Change weight and save.
-    fast_1.cpp_ext_scalar_mix_0_scalar_0.data.fill_(42.)
-    fast_1_state_dict = fast_1.state_dict()
+    fast_1.scalar_mix_0.scalar_0.data.fill_(42.)
 
-    # Load.
-    fast_2 = FastElmo(
-            ELMO_OPTIONS_FILE,
-            ELMO_WEIGHT_FILE,
-    )
-    fast_2.load_state_dict(fast_1_state_dict)
+    # `state_dict` is not supported yet.
+    # https://github.com/pytorch/pytorch/pull/11510
+    with pytest.raises(AttributeError):
+        fast_1_state_dict = fast_1.state_dict()
 
-    assert float(fast_2.cpp_ext_scalar_mix_0_scalar_0) == 42.
-    assert float(fast_2.scalar_mixes[0].named_parameters()['scalar_0']) == 42.
+    # # Load.
+    # fast_2 = FastElmo(
+    #         ELMO_OPTIONS_FILE,
+    #         ELMO_WEIGHT_FILE,
+    # )
+    # fast_2.load_state_dict(fast_1_state_dict)
+
+    # assert float(fast_1.scalar_mix_0.scalar_0) == 42.
 
 
 def test_fast_elmo_word_embedding():

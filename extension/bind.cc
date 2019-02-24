@@ -23,11 +23,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           "cuda",
           [](cnt::ElmoCharacterEncoderImpl& module, int64_t device) {
             module.to("cuda:" + std::to_string(device));
-          })
-
-      .def(
-          "__call__",
-          &cnt::ElmoCharacterEncoderImpl::forward);
+          });
 
   torch::python::bind_module<cnt::ScalarMixImpl>(
       m, "ScalarMix")
@@ -49,16 +45,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           "cuda",
           [](cnt::ScalarMixImpl& module, int64_t device) {
             module.to("cuda:" + std::to_string(device));
-          })
-
-      .def(
-          "__call__",
-          &cnt::ScalarMixImpl::forward)
-
-      .def(
-          "__call__",
-          [](cnt::ScalarMixImpl& module,
-              const std::vector<torch::Tensor> &tensors) {
-            return module.forward(tensors, torch::Tensor());
           });
 }

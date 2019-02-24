@@ -17,30 +17,29 @@ from pytorch_fast_elmo.factory import (
 from pytorch_fast_elmo import utils
 from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
 
+# def _bind_cpp_extension_parameters(
+#         py_module: torch.nn.Module,
+#         cpp_module: Any,
+#         param_prefix: str = '',
+#         override: bool = False,
+#         only_trainable: bool = False,
+# ) -> None:
+#     if isinstance(cpp_module, torch.nn.Module):
+#         raise TypeError('cpp_module should not be torch.nn.Module.')
 
-def _bind_cpp_extension_parameters(
-        py_module: torch.nn.Module,
-        cpp_module: Any,
-        param_prefix: str = '',
-        override: bool = False,
-        only_trainable: bool = False,
-) -> None:
-    if isinstance(cpp_module, torch.nn.Module):
-        raise TypeError('cpp_module should not be torch.nn.Module.')
+#     prefix = 'cpp_ext_' + param_prefix
+#     for name, tensor in cpp_module.named_parameters().items():
+#         if only_trainable and not tensor.requires_grad:
+#             continue
 
-    prefix = 'cpp_ext_' + param_prefix
-    for name, tensor in cpp_module.named_parameters().items():
-        if only_trainable and not tensor.requires_grad:
-            continue
+#         param_name = (prefix + name).replace('.', '_')
+#         if override and hasattr(py_module, param_name):
+#             delattr(py_module, param_name)
 
-        param_name = (prefix + name).replace('.', '_')
-        if override and hasattr(py_module, param_name):
-            delattr(py_module, param_name)
-
-        py_module.register_parameter(
-                param_name,
-                torch.nn.Parameter(tensor, requires_grad=tensor.requires_grad),
-        )
+#         py_module.register_parameter(
+#                 param_name,
+#                 torch.nn.Parameter(tensor, requires_grad=tensor.requires_grad),
+#         )
 
 
 def _raise_if_kwargs_is_invalid(allowed: Set[str], kwargs: Dict[str, Any]) -> None:
@@ -256,7 +255,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             if scalar_mix_parameters is None:
                 scalar_mix_parameters = []
 
-            for _ in range(num_output_representations):
+            for idx in range(num_output_representations):
                 scalar_mix = ScalarMix(
                         # char cnn + lstm.
                         self.lstm_factory.num_layers + 1,
@@ -264,6 +263,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         initial_scalar_parameters=scalar_mix_parameters,
                         trainable=not scalar_mix_parameters,
                 )
+                self.add_module(f'scalar_mix_{idx}', scalar_mix)
                 self.scalar_mixes.append(scalar_mix)
 
             self.repr_dropout = None
@@ -276,14 +276,14 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
     def _bind_parameters(self, override: bool = False) -> None:
         # Since `ElmoCharacterEncoder`, `StatefulUnidirectionalLstm`, `ScalarMix` are not
         # instances of `torch.nn.Module`, we need to bind the parameters manually.
-        if not self.disable_char_cnn:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.char_cnn,
-                    'char_cnn_',
-                    override=override,
-                    only_trainable=True,
-            )
+        # if not self.disable_char_cnn:
+        #     _bind_cpp_extension_parameters(
+        #             self,
+        #             self.char_cnn,
+        #             'char_cnn_',
+        #             override=override,
+        #             only_trainable=True,
+        #     )
 
         if not self.disable_word_embedding \
                 and self.word_embedding_weight.requires_grad:
@@ -295,22 +295,22 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                     torch.nn.Parameter(self.word_embedding_weight, requires_grad=True),
             )
 
-        if not self.disable_forward_lstm:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.forward_lstm,
-                    'forward_lstm_',
-                    override=override,
-                    only_trainable=True,
-            )
-        if not self.disable_backward_lstm:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.backward_lstm,
-                    'backward_lstm_',
-                    override=override,
-                    only_trainable=True,
-            )
+        # if not self.disable_forward_lstm:
+        #     _bind_cpp_extension_parameters(
+        #             self,
+        #             self.forward_lstm,
+        #             'forward_lstm_',
+        #             override=override,
+        #             only_trainable=True,
+        #     )
+        # if not self.disable_backward_lstm:
+        #     _bind_cpp_extension_parameters(
+        #             self,
+        #             self.backward_lstm,
+        #             'backward_lstm_',
+        #             override=override,
+        #             only_trainable=True,
+        #     )
 
         if not self.disable_vocab_projection:
             if self.vocab_projection_weight.requires_grad:
@@ -331,15 +331,15 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
                         torch.nn.Parameter(self.vocab_projection_bias, requires_grad=True),
                 )
 
-        if not self.disable_scalar_mix:
-            for idx, scalar_mix in enumerate(self.scalar_mixes):
-                _bind_cpp_extension_parameters(
-                        self,
-                        scalar_mix,
-                        f'scalar_mix_{idx}_',
-                        override=override,
-                        only_trainable=True,
-                )
+        # if not self.disable_scalar_mix:
+        #     for idx, scalar_mix in enumerate(self.scalar_mixes):
+        #         _bind_cpp_extension_parameters(
+        #                 self,
+        #                 scalar_mix,
+        #                 f'scalar_mix_{idx}_',
+        #                 override=override,
+        #                 only_trainable=True,
+        #         )
 
     def _cpp_ext_cuda(self, cpp_module: Any, device: Optional[int] = None) -> None:
         # TODO: handle optional parameter in cpp extension.
@@ -595,7 +595,7 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
         """
         reprs = []
         for scalar_mix in self.scalar_mixes:
-            mixed = scalar_mix([inputs.data for inputs in packed_sequences])
+            mixed = scalar_mix([inputs.data for inputs in packed_sequences], None)
             if self.repr_dropout is not None:
                 mixed = self.repr_dropout(mixed)
             reprs.append(PackedSequence(mixed, packed_sequences[0].batch_sizes))

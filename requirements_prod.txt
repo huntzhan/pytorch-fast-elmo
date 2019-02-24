@@ -1,4 +1,5 @@
-torch==1.0.1.post2
-pytorch-stateful-lstm==1.5.1
+# Enable once torch 1.1 is released.
+# torch==1.0.1.post2
+# pytorch-stateful-lstm==1.5.1
 h5py==2.9.0
 fire==0.1.3

@@ -6,6 +6,12 @@ install:
 - pip install -U pip
 - pip install -U torch thinc spacy pluggy
 - pip install -U -r requirements_dev.txt --progress-bar off
+
+# Remove once torch 1.1 is released.
+- pip uninstall -y torch
+- pip install torch_nightly -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+- pip install -e git+https://github.com/cnt-dev/pytorch-stateful-lstm@nightly#egg=pytorch-stateful-lstm
+
 - python setup.py develop
 script:
 - py.test
