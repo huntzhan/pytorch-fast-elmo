@@ -45,7 +45,7 @@ setup(
     include_package_data=True,
     keywords='pytorch_fast_elmo',
     name='pytorch_fast_elmo',
-    packages=find_packages(include=['pytorch_fast_elmo']),
+    packages=find_packages(),
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/cnt-dev/pytorch-fast-elmo',
