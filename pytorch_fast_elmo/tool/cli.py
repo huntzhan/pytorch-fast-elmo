@@ -130,6 +130,30 @@ class Main:
                 cuda_device,
         )
 
+    def encode_sentences(  # type: ignore
+            self,
+            options_file,
+            weight_file,
+            vocab_txt,
+            input_txt,
+            output_hdf5,
+            no_char_cnn=False,
+            char_cnn_maxlen=0,
+            scalar_mix=None,
+            cuda_device=-1,
+    ):
+        inspect.encode_sentences(
+                options_file,
+                weight_file,
+                vocab_txt,
+                input_txt,
+                output_hdf5,
+                no_char_cnn,
+                char_cnn_maxlen,
+                scalar_mix,
+                cuda_device,
+        )
+
 
 def main():  # type: ignore
     fire.Fire(Main)

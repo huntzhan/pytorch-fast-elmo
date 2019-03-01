@@ -1,7 +1,7 @@
 """
 Provide helper classes/functions to execute ELMo.
 """
-# pylint: disable=no-self-use,arguments-differ,too-many-public-methods
+# pylint: disable=no-self-use,arguments-differ,too-many-public-methods,too-many-lines
 
 from typing import List, Tuple, Optional, Dict, Union, Any, Set
 
@@ -865,6 +865,66 @@ class FastElmoWordEmbedding(FastElmoBase):
         `inputs` of shape `(batch_size, max_timesteps)
         """
         return self.forward_like_allennlp(inputs)
+
+
+class FastElmoPlainEncoderBase(FastElmoBase):  # pylint: disable=abstract-method
+
+    def exec_context_independent_repr(self, inputs: PackedSequence) -> PackedSequence:
+        raise NotImplementedError()
+
+    def execute(self, inputs: PackedSequence) -> List[PackedSequence]:
+        token_repr = self.exec_context_independent_repr(inputs)
+        # BiLSTM.
+        bilstm_repr = self.exec_bilstm(token_repr)
+        # Scalar Mix.
+        conbimed_repr = self.combine_char_cnn_and_bilstm_outputs(
+                token_repr,
+                self.concat_packed_sequences(bilstm_repr),
+        )
+        return conbimed_repr
+
+    def forward(  # type: ignore
+            self,
+            inputs: torch.Tensor,
+    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        """
+        No scalar mix.
+        """
+        return self.forward_with_sorting_and_packing(inputs)
+
+
+class FastElmoPlainEncoder(FastElmoPlainEncoderBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(self.EXEC_PARAMS, kwargs)
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def exec_context_independent_repr(self, inputs: PackedSequence) -> PackedSequence:
+        return self.exec_char_cnn(inputs)
+
+
+class FastElmoWordEmbeddingPlainEncoder(FastElmoPlainEncoderBase):
+
+    def __init__(
+            self,
+            options_file: Optional[str],
+            weight_file: str,
+            **kwargs: Any,
+    ) -> None:
+        _raise_if_kwargs_is_invalid(self.EXEC_PARAMS, kwargs)
+        kwargs['disable_char_cnn'] = True
+        kwargs['disable_word_embedding'] = False
+        kwargs['disable_scalar_mix'] = True
+        super().__init__(options_file, weight_file, **kwargs)
+
+    def exec_context_independent_repr(self, inputs: PackedSequence) -> PackedSequence:
+        return self.exec_word_embedding(inputs)
 
 
 class FastElmoUnidirectionalVocabDistribBase(FastElmoBase):  # pylint: disable=abstract-method

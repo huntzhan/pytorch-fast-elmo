@@ -31,6 +31,8 @@ from pytorch_fast_elmo.model import (
         FastElmoBase,
         FastElmo,
         FastElmoWordEmbedding,
+        FastElmoPlainEncoder,
+        FastElmoWordEmbeddingPlainEncoder,
         FastElmoForwardVocabDistrib,
         FastElmoBackwardVocabDistrib,
         FastElmoWordEmbeddingForwardVocabDistrib,
