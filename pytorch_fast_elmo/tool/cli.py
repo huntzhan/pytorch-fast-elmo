@@ -140,6 +140,7 @@ class Main:
             no_char_cnn=False,
             char_cnn_maxlen=0,
             scalar_mix=None,
+            warm_up_txt=None,
             cuda_device=-1,
     ):
         inspect.encode_sentences(
@@ -151,6 +152,7 @@ class Main:
                 no_char_cnn,
                 char_cnn_maxlen,
                 scalar_mix,
+                warm_up_txt,
                 cuda_device,
         )
 

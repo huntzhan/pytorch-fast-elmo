@@ -11,6 +11,7 @@ from pytorch_fast_elmo import (
         batch_to_char_ids,
         load_and_build_vocab2id,
         batch_to_word_ids,
+        FastElmoBase,
         FastElmo,
         FastElmoWordEmbedding,
         FastElmoPlainEncoder,
@@ -57,6 +58,25 @@ def _generate_batch_to_ids(
     return batch_to_ids
 
 
+def _warm_up(
+        warm_up_txt: str,
+        batch_to_ids: Callable[[List[List[str]]], torch.Tensor],
+        elmo: FastElmoBase,
+) -> None:
+    sentences_token_ids = []
+    with open(warm_up_txt) as fin:
+        for line in fin:
+            sent = line.split()
+            if not sent:
+                continue
+            token_ids = batch_to_ids([sent])
+            sentences_token_ids.append(token_ids)
+
+    for token_ids in sentences_token_ids:
+        with torch.no_grad():
+            elmo(token_ids)
+
+
 def sample_sentence(
         options_file: str,
         weight_file: str,
@@ -97,18 +117,7 @@ def sample_sentence(
 
     # Warm up.
     if warm_up_txt:
-        sentences_token_ids = []
-        with open(warm_up_txt) as fin:
-            for line in fin:
-                sent = line.split()
-                if not sent:
-                    continue
-                token_ids = batch_to_ids([sent])
-                sentences_token_ids.append(token_ids)
-
-        for token_ids in sentences_token_ids:
-            with torch.no_grad():
-                elmo(token_ids)
+        _warm_up(warm_up_txt, batch_to_ids, elmo)
 
     # Manually deal with BOS/EOS.
     elmo.exec_managed_lstm_bos_eos = False
@@ -191,6 +200,7 @@ def encode_sentences(
         no_char_cnn: bool,
         char_cnn_maxlen: int,
         scalar_mix: Optional[Tuple[float]],
+        warm_up_txt: Optional[str],
         cuda_device: int,
 ) -> None:
     if scalar_mix is None:
@@ -226,6 +236,10 @@ def encode_sentences(
             no_char_cnn,
             cuda_device,
     )
+
+    # Warm up.
+    if warm_up_txt:
+        _warm_up(warm_up_txt, batch_to_ids, elmo)
 
     sentences: List[Tuple[int, List[str]]] = []
     with open(input_txt) as fin:
