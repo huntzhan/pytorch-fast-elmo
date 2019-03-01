@@ -268,9 +268,9 @@ def encode_sentences(
             if cuda_device >= 0:
                 encoded = encoded.cpu()
 
-        fout.create_dataset(
-                str(sentence_id),
-                encoded.shape,
-                dtype='float32',
-                data=encoded.numpy(),
-        )
+            fout.create_dataset(
+                    str(sentence_id),
+                    encoded.shape,
+                    dtype='float32',
+                    data=encoded.numpy(),
+            )
