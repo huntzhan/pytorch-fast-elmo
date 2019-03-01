@@ -227,14 +227,14 @@ def encode_sentences(
             cuda_device,
     )
 
-    sentences: List[Tuple[str, List[str]]] = []
+    sentences: List[Tuple[int, List[str]]] = []
     with open(input_txt) as fin:
         for sentence_id, line in enumerate(fin):
             tokens = line.split()
             if not tokens:
                 logger.warning('Ignore sentence_id = %s', sentence_id)
                 continue
-            sentences.append((str(sentence_id), tokens))
+            sentences.append((sentence_id, tokens))
 
     with h5py.File(output_hdf5, 'w') as fout:
         for sentence_id, tokens in sentences:
@@ -255,7 +255,7 @@ def encode_sentences(
                 encoded = encoded.cpu()
 
         fout.create_dataset(
-                sentence_id,
+                str(sentence_id),
                 encoded.shape,
                 dtype='float32',
                 data=encoded.numpy(),
