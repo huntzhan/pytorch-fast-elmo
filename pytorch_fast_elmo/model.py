@@ -2,8 +2,8 @@
 Provide helper classes/functions to execute ELMo.
 """
 # pylint: disable=no-self-use,arguments-differ,too-many-public-methods,too-many-lines
-
 from typing import List, Tuple, Optional, Dict, Union, Any, Set
+from collections import OrderedDict
 
 import torch
 from torch.nn.utils.rnn import PackedSequence
@@ -17,32 +17,8 @@ from pytorch_fast_elmo.factory import (
 )
 from pytorch_fast_elmo import utils
 
+# TODO: use in inference.
 # from _pytorch_fast_elmo import ScalarMix  # pylint: disable=no-name-in-module
-
-
-def _bind_cpp_extension_parameters(
-        py_module: torch.nn.Module,
-        cpp_module: Any,
-        param_prefix: str = '',
-        override: bool = False,
-        only_trainable: bool = False,
-) -> None:
-    if isinstance(cpp_module, torch.nn.Module):
-        raise TypeError('cpp_module should not be torch.nn.Module.')
-
-    prefix = 'cpp_ext_' + param_prefix
-    for name, tensor in cpp_module.named_parameters().items():
-        if only_trainable and not tensor.requires_grad:
-            continue
-
-        param_name = (prefix + name).replace('.', '_')
-        if override and hasattr(py_module, param_name):
-            delattr(py_module, param_name)
-
-        py_module.register_parameter(
-                param_name,
-                torch.nn.Parameter(tensor, requires_grad=tensor.requires_grad),
-        )
 
 
 def _raise_if_kwargs_is_invalid(allowed: Set[str], kwargs: Dict[str, Any]) -> None:
@@ -251,7 +227,10 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not disable_char_cnn:
-            self.char_cnn = self.char_cnn_factory.create(requires_grad=char_cnn_requires_grad)
+            self._add_cpp_module_to_buffer(
+                    'char_cnn',
+                    self.char_cnn_factory.create(requires_grad=char_cnn_requires_grad),
+            )
 
         # Word Embedding.
         if options_file:
@@ -270,8 +249,9 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
 
         if not disable_word_embedding:
             # Not a cpp extension.
-            self.word_embedding_weight, lstm_bos_repr, lstm_eos_repr = \
+            word_embedding_weight, lstm_bos_repr, lstm_eos_repr = \
                     self.word_embedding_factory.create(requires_grad=word_embedding_requires_grad)
+            self.register_buffer('word_embedding_weight', word_embedding_weight)
 
         # LSTM.
         if options_file:
@@ -292,26 +272,36 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             )
 
         if not (disable_forward_lstm and disable_backward_lstm):
-            self.forward_lstm, self.backward_lstm = self.lstm_factory.create(
+            forward_lstm, backward_lstm = self.lstm_factory.create(
                     enable_forward=not disable_forward_lstm,
                     forward_requires_grad=forward_lstm_requires_grad,
                     enable_backward=not disable_backward_lstm,
                     backward_requires_grad=backward_lstm_requires_grad,
             )
+            if not disable_forward_lstm:
+                self._add_cpp_module_to_buffer('forward_lstm', forward_lstm)
+            if not disable_backward_lstm:
+                self._add_cpp_module_to_buffer('backward_lstm', backward_lstm)
 
             # Cache BOS/EOS reprs.
             if exec_managed_lstm_bos_eos:
                 if disable_char_cnn:
                     if lstm_bos_repr is None or lstm_eos_repr is None:
                         raise ValueError('BOS/EOS not provided.')
-                    self.lstm_bos_repr = lstm_bos_repr
-                    self.lstm_eos_repr = lstm_eos_repr
 
                 else:
-                    self.lstm_bos_repr, self.lstm_eos_repr = utils.get_bos_eos_token_repr(
+                    lstm_bos_repr, lstm_eos_repr = utils.get_bos_eos_token_repr(
                             self.char_cnn_factory,
                             self.char_cnn,
                     )
+                self.register_buffer(
+                        'lstm_bos_repr',
+                        lstm_bos_repr,
+                )
+                self.register_buffer(
+                        'lstm_eos_repr',
+                        lstm_eos_repr,
+                )
 
         # Vocabulary projection.
         if options_file:
@@ -348,140 +338,37 @@ class FastElmoBase(torch.nn.Module):  # type: ignore
             if output_representation_dropout > 0.0:
                 self.repr_dropout = torch.nn.Dropout(p=output_representation_dropout)
 
-        # Bind CPU parameters.
-        self._bind_parameters()
+    def state_dict(  # type: ignore
+            self,
+            destination=None,
+            prefix='',
+            keep_vars=False,
+    ):
+        tmp_buffers = self._buffers
+        self._buffers = OrderedDict()  # type: ignore
+        ret = super().state_dict(destination, prefix, keep_vars)
+        self._buffers = tmp_buffers
+        return ret
 
-    def _bind_parameters(self, override: bool = False) -> None:
-        # Since `ElmoCharacterEncoder`, `StatefulUnidirectionalLstm`, `ScalarMix` are not
-        # instances of `torch.nn.Module`, we need to bind the parameters manually.
-        if not self.disable_char_cnn:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.char_cnn,
-                    'char_cnn_',
-                    override=override,
-                    only_trainable=True,
-            )
+    def _load_from_state_dict(  # type: ignore
+            self,
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+    ):
+        tmp_buffers = self._buffers
+        self._buffers = OrderedDict()
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys,
+                                      unexpected_keys, error_msgs)
+        self._buffers = tmp_buffers
 
-        if not self.disable_word_embedding \
-                and self.word_embedding_weight.requires_grad:
-            word_embd_param_name = 'word_embedding'
-            if override and hasattr(self, word_embd_param_name):
-                delattr(self, word_embd_param_name)
-            self.register_parameter(
-                    word_embd_param_name,
-                    torch.nn.Parameter(self.word_embedding_weight, requires_grad=True),
-            )
-
-        if not self.disable_forward_lstm:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.forward_lstm,
-                    'forward_lstm_',
-                    override=override,
-                    only_trainable=True,
-            )
-        if not self.disable_backward_lstm:
-            _bind_cpp_extension_parameters(
-                    self,
-                    self.backward_lstm,
-                    'backward_lstm_',
-                    override=override,
-                    only_trainable=True,
-            )
-
-        if not self.disable_vocab_projection:
-            if self.vocab_projection_weight.requires_grad:
-                param_name = 'vocab_projection_weight'
-                if override and hasattr(self, param_name):
-                    delattr(self, param_name)
-                self.register_parameter(
-                        param_name,
-                        torch.nn.Parameter(self.vocab_projection_weight, requires_grad=True),
-                )
-
-            if self.vocab_projection_bias.requires_grad:
-                param_name = 'vocab_projection_bias'
-                if override and hasattr(self, param_name):
-                    delattr(self, param_name)
-                self.register_parameter(
-                        param_name,
-                        torch.nn.Parameter(self.vocab_projection_bias, requires_grad=True),
-                )
-
-        # if not self.disable_scalar_mix:
-        #     for idx, scalar_mix in enumerate(self.scalar_mixes):
-        #         _bind_cpp_extension_parameters(
-        #                 self,
-        #                 scalar_mix,
-        #                 f'scalar_mix_{idx}_',
-        #                 override=override,
-        #                 only_trainable=True,
-        #         )
-
-    def _cpp_ext_cuda(self, cpp_module: Any, device: Optional[int] = None) -> None:
-        # TODO: handle optional parameter in cpp extension.
-        if device is not None:
-            cpp_module.cuda(device)
-        else:
-            cpp_module.cuda()
-
-    def cuda(self, device=None):  # type: ignore
-        # Move all cpp exntensions to GPU.
-        if not self.disable_char_cnn:
-            self._cpp_ext_cuda(self.char_cnn, device)
-
-        if not self.disable_word_embedding:
-            self.word_embedding_weight = self.word_embedding_weight.cuda(device)
-
-        if not self.disable_forward_lstm:
-            self._cpp_ext_cuda(self.forward_lstm, device)
-        if not self.disable_backward_lstm:
-            self._cpp_ext_cuda(self.backward_lstm, device)
-
-        if not self.disable_vocab_projection:
-            self.vocab_projection_weight = self.vocab_projection_weight.cuda(device)
-            self.vocab_projection_bias = self.vocab_projection_bias.cuda(device)
-
-        # if not self.disable_scalar_mix:
-        #     for scalar_mix in self.scalar_mixes:
-        #         self._cpp_ext_cuda(scalar_mix, device)
-
-        # Override parameter bindings.
-        self._bind_parameters(override=True)
-
-        return super().cuda(device)
-
-    def cpu(self):  # type: ignore
-        # Move all cpp exntensions to CPU.
-        if not self.disable_char_cnn:
-            self.char_cnn.cpu()
-
-        if not self.disable_word_embedding:
-            self.word_embedding_weight = self.word_embedding_weight.cpu()
-
-        if not self.disable_forward_lstm:
-            self.forward_lstm.cpu()
-        if not self.disable_backward_lstm:
-            self.backward_lstm.cpu()
-
-        if not self.disable_vocab_projection:
-            self.vocab_projection_weight = self.vocab_projection_weight.cpu()
-            self.vocab_projection_bias = self.vocab_projection_bias.cpu()
-
-        # if not self.disable_scalar_mix:
-        #     for scalar_mix in self.scalar_mixes:
-        #         scalar_mix.cpu()
-
-        # Also, move BOS/EOS back to CPU.
-        if not (self.disable_forward_lstm and self.disable_backward_lstm):
-            self.lstm_bos_repr = self.lstm_bos_repr.cpu()
-            self.lstm_eos_repr = self.lstm_eos_repr.cpu()
-
-        # Override parameter bindings.
-        self._bind_parameters(override=True)
-
-        return super().cpu()
+    def _add_cpp_module_to_buffer(self, name: str, cpp_module: Any) -> None:
+        # register_buffer will raise an exception.
+        self._buffers[name] = cpp_module
 
     def _get_lstm_device(self) -> int:
         cpp_ext = None

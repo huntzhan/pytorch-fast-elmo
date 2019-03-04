@@ -113,7 +113,7 @@ def sample_sentence(
 
     elmo = fast_elmo_cls(options_file, weight_file)
     if cuda_device >= 0:
-        elmo = elmo.cuda(cuda_device)  # type: ignore
+        elmo = elmo.cuda(cuda_device)
 
     # Warm up.
     if warm_up_txt:
@@ -227,7 +227,7 @@ def encode_sentences(
         )
 
     if cuda_device >= 0:
-        elmo = elmo.cuda(cuda_device)  # type: ignore
+        elmo = elmo.cuda(cuda_device)
 
     vocab2id, _ = _generate_vocab2id_id2vocab(vocab_txt)
     batch_to_ids = _generate_batch_to_ids(

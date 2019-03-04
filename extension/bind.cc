@@ -1,9 +1,38 @@
 #include "extension/elmo_character_encoder.h"
 #include "extension/scalar_mix.h"
 
+template <typename ModuleType, typename... Extra>
+py::class_<ModuleType, Extra...> patch_methods(
+    py::class_<ModuleType, Extra...> module) {
+  module.attr("cuda") = nullptr;
+  module.def(
+      "cuda",
+      [](ModuleType& module, int64_t device) {
+        module.to("cuda:" + std::to_string(device));
+        return module;
+      });
+  module.def(
+      "cuda",
+      [](ModuleType& module) {
+        module.to(at::kCUDA);
+        return module;
+      });
+
+  module.attr("cpu") = nullptr;
+  module.def(
+      "cpu",
+      [](ModuleType& module) {
+        module.to(at::kCPU);
+        return module;
+      });
+
+  return module;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  torch::python::bind_module<cnt::ElmoCharacterEncoderImpl>(
-      m, "ElmoCharacterEncoder")
+  patch_methods(
+      torch::python::bind_module<cnt::ElmoCharacterEncoderImpl>(
+          m, "ElmoCharacterEncoder"))
 
       .def(
           py::init<
@@ -20,17 +49,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("output_dim"))
 
       .def(
-          "cuda",
-          [](cnt::ElmoCharacterEncoderImpl& module, int64_t device) {
-            module.to("cuda:" + std::to_string(device));
-          })
-
-      .def(
           "__call__",
           &cnt::ElmoCharacterEncoderImpl::forward);
 
-  torch::python::bind_module<cnt::ScalarMixImpl>(
-      m, "ScalarMix")
+  patch_methods(
+      torch::python::bind_module<cnt::ScalarMixImpl>(
+          m, "ScalarMix"))
 
       .def(
           py::init<
@@ -44,12 +68,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("do_layer_norm") = false,
           py::arg("initial_scalar_parameters") = std::vector<double>(),
           py::arg("trainable") = true)
-
-      .def(
-          "cuda",
-          [](cnt::ScalarMixImpl& module, int64_t device) {
-            module.to("cuda:" + std::to_string(device));
-          })
 
       .def(
           "__call__",
