@@ -7,8 +7,12 @@ py::class_<ModuleType, Extra...> patch_methods(
   module.attr("cuda") = nullptr;
   module.def(
       "cuda",
-      [](ModuleType& module, int64_t device) {
-        module.to("cuda:" + std::to_string(device));
+      [](ModuleType& module, torch::optional<int64_t> device) {
+        if (device.has_value()) {
+          module.to("cuda:" + std::to_string(device.value()));
+        } else {
+          module.to(at::kCUDA);
+        }
         return module;
       });
   module.def(
