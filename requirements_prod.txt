@@ -1,4 +1,4 @@
 torch==1.0.1.post2
-pytorch-stateful-lstm>=1.5.3
+pytorch-stateful-lstm>=1.6.0
 h5py==2.9.0
 fire==0.1.3
