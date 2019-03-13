@@ -199,7 +199,7 @@ class ElmoWordEmbeddingFactory(FactoryBase):
         }
         return factory
 
-    def weight_file_is_hdf5(self):
+    def weight_file_is_hdf5(self) -> bool:
         try:
             with h5py.File(self.weight_file, 'r') as fin:
                 return True
