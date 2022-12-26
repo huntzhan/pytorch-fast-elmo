@@ -1,6 +1,6 @@
 # Package.
 pip==19.0.1
-wheel==0.32.3
+wheel==0.38.1
 bumpversion==0.5.3
 
 # Doc.
